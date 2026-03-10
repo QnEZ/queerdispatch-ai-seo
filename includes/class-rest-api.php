@@ -111,6 +111,8 @@ final class Rest_API
     {
         $post_id = (int) $post->ID;
         $thumbnail_id = (int) get_post_thumbnail_id($post_id);
+        $raw_content = (string) ($content ?? $post->post_content);
+        $prepared_content = self::prepare_content_summary($raw_content);
 
         return [
             'site_name' => get_bloginfo('name'),
@@ -121,8 +123,13 @@ final class Rest_API
                 'status'      => $post->post_status,
                 'title'       => get_the_title($post_id),
                 'slug'        => $post->post_name,
-                'excerpt'     => wp_strip_all_tags((string) $post->post_excerpt),
-                'content'     => (string) ($content ?? $post->post_content),
+                'excerpt'     => $prepared_content['excerpt'],
+                'content'     => $prepared_content['content'],
+                'content_stats' => [
+                    'source_chars' => $prepared_content['source_chars'],
+                    'sent_chars' => $prepared_content['sent_chars'],
+                    'was_trimmed' => $prepared_content['was_trimmed'],
+                ],
                 'featured_image_alt' => (string) get_post_meta($thumbnail_id, '_wp_attachment_image_alt', true),
                 'featured_image_caption' => $thumbnail_id > 0 ? wp_get_attachment_caption($thumbnail_id) : '',
                 'categories'  => self::get_post_terms($post_id, 'category'),
@@ -148,7 +155,28 @@ final class Rest_API
                     'story_package'        => (bool) Settings::get_option('enable_story_package', '1'),
                 ],
             ],
-            'internal_link_candidates' => self::get_internal_link_candidates($post_id, (string) ($content ?? $post->post_content)),
+            'internal_link_candidates' => self::get_internal_link_candidates($post_id, $prepared_content['content']),
+        ];
+    }
+
+    private static function prepare_content_summary(string $content): array
+    {
+        $source_chars = mb_strlen($content);
+        $plain = wp_strip_all_tags($content, true);
+        $plain = html_entity_decode($plain, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $plain = preg_replace('/\s+/u', ' ', $plain) ?? $plain;
+        $plain = trim((string) $plain);
+
+        $excerpt = mb_substr($plain, 0, 280);
+        $max_chars = 6000;
+        $trimmed = mb_substr($plain, 0, $max_chars);
+
+        return [
+            'excerpt' => $excerpt,
+            'content' => $trimmed,
+            'source_chars' => $source_chars,
+            'sent_chars' => mb_strlen($trimmed),
+            'was_trimmed' => $source_chars > mb_strlen($trimmed),
         ];
     }
 
@@ -205,7 +233,7 @@ final class Rest_API
         wp_reset_postdata();
 
         usort($results, static fn(array $a, array $b): int => (int) ($b['_score'] ?? 0) <=> (int) ($a['_score'] ?? 0));
-        $results = array_slice($results, 0, 5);
+        $results = array_slice($results, 0, 3);
         return array_map(static function (array $item): array {
             unset($item['_score']);
             return $item;

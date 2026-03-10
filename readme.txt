@@ -3,7 +3,7 @@ Contributors: queerdispatch
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 0.8.0
+Stable tag: 0.8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -13,12 +13,12 @@ AI-assisted SEO, social copy, infographic prompts, internal-link suggestions, an
 
 QueerDispatch AI SEO adds a Gutenberg sidebar for generating editorial SEO fields with the OpenAI API.
 
-Version 0.5.0 adds:
-- beat-specific prompt presets for QueerDispatch workflows
-- featured-image alt text and caption suggestions
-- editorial workflow status tracking
-- copy-ready story package export boxes
-- story package generation that bundles article SEO, social copy, and image prompt outputs
+Version 0.8.1 focuses on timeout resilience for real post generation:
+- trims post content to clean plain text before sending it to OpenAI
+- caps article body size to reduce oversized requests
+- splits generation into separate core and media requests
+- raises the default request timeout to 90 seconds
+- logs payload size for easier debugging
 
 == Installation ==
 1. Upload the plugin folder to /wp-content/plugins/ or install the ZIP from WordPress admin.
@@ -27,8 +27,11 @@ Version 0.5.0 adds:
 4. Add your OpenAI API key and choose enabled post types.
 
 == Changelog ==
-= 0.8.0 =
-* Added request logging, generation history, role controls, token caps, settings import/export, diagnostics, and uninstall cleanup.
+= 0.8.1 =
+* Trimmed post content before API calls and capped article body size.
+* Split generation into smaller core and media requests.
+* Raised the default request timeout to 90 seconds.
+* Added payload-size logging for generation requests.
 
 = 0.5.0 =
 * Added beat preset selection.

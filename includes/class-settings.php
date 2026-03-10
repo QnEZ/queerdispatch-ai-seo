@@ -162,7 +162,7 @@ final class Settings
             'allowed_roles'          => ['administrator', 'editor'],
             'per_request_token_cap'  => '12000',
             'daily_generation_limit' => '50',
-            'request_timeout'        => '45',
+            'request_timeout'        => '90',
             'enable_excerpt'         => '1',
             'enable_social'          => '1',
             'enable_internal_links'  => '1',
