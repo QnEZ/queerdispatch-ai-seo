@@ -15,10 +15,10 @@ final class OpenAI_Client
     private string $api_key;
     private string $model;
 
-    public function __construct(?string $api_key = null, ?string $model = null)
+    public function __construct()
     {
-        $this->api_key = $api_key ?: (string) Settings::get_option('api_key', '');
-        $this->model   = $model ?: (string) Settings::get_option('model', 'gpt-5-mini');
+        $this->api_key = trim((string) Settings::get_option('api_key', ''));
+        $this->model = trim((string) Settings::get_option('model', 'gpt-5-mini'));
     }
 
     public function is_configured(): bool
@@ -33,6 +33,18 @@ final class OpenAI_Client
             'editorial' => 'Treat this as an editorial or opinion piece. Keep the framing sharp and persuasive, but still credible and non-defamatory.',
             'explainer' => 'Treat this as an explainer. Emphasize plain language, search-friendly question answering, and contextual clarity.',
             'social_copy' => 'Treat this as social-first copy. Prioritize shareability, punchy lines, and strong social metadata without becoming vague clickbait.',
+        ];
+    }
+
+    public static function get_beat_preset_prompts(): array
+    {
+        return [
+            'general' => 'General QueerDispatch framing: center queer communities, maintain credibility, and keep calls to attention grounded in the article facts.',
+            'policy_watch' => 'Policy Watch framing: prioritize legislation, executive actions, court developments, and the concrete material impact on queer and trans people.',
+            'state_alert' => 'State Alert framing: emphasize why a specific state-level development matters now, who is affected, and what readers should watch next.',
+            'media_watch' => 'Media Watch framing: focus on rhetoric, media narratives, public backlash, amplification patterns, and why framing choices matter.',
+            'community_voice' => 'Community Voice framing: foreground the lived reality, stakes, and dignity of impacted people while staying specific and concrete.',
+            'rights_explainer' => 'Rights Explainer framing: simplify legal and policy complexity into plain-language takeaways without flattening nuance.',
         ];
     }
 
@@ -59,6 +71,9 @@ final class OpenAI_Client
                     'ai_disclosure' => ['type' => 'string'],
                     'analysis_notes' => ['type' => 'string'],
                     'infographic_prompt' => ['type' => 'string'],
+                    'featured_image_alt_suggestion' => ['type' => 'string'],
+                    'featured_image_caption_suggestion' => ['type' => 'string'],
+                    'story_package' => ['type' => 'string'],
                     'social_posts' => [
                         'type' => 'array',
                         'items' => [
@@ -100,6 +115,9 @@ final class OpenAI_Client
                     'ai_disclosure',
                     'analysis_notes',
                     'infographic_prompt',
+                    'featured_image_alt_suggestion',
+                    'featured_image_caption_suggestion',
+                    'story_package',
                     'social_posts',
                     'internal_link_suggestions',
                 ],
@@ -110,10 +128,15 @@ final class OpenAI_Client
         $mode_prompts = self::get_article_mode_prompts();
         $mode_prompt = $mode_prompts[$article_mode] ?? $mode_prompts['news'];
 
+        $beat_preset = sanitize_key((string) ($payload['settings']['beat_preset'] ?? 'general'));
+        $beat_prompts = self::get_beat_preset_prompts();
+        $beat_prompt = $beat_prompts[$beat_preset] ?? $beat_prompts['general'];
+
         $system_message = implode("\n", [
             'You are an editorial SEO assistant for QueerDispatch, a queer-focused news and activist publication.',
             (string) Settings::get_option('brand_voice', ''),
             $mode_prompt,
+            $beat_prompt,
             'Return only valid JSON matching the provided schema.',
             'Keep SEO title under 65 characters when possible.',
             'Keep meta description under 160 characters when possible.',
@@ -122,6 +145,9 @@ final class OpenAI_Client
             'Do not fabricate legal claims, dates, or quotes.',
             'headline_variants should be 3 to 5 options, each distinct and plausible.',
             'social_posts should include one item each for Facebook, Bluesky, and X.',
+            'featured_image_alt_suggestion should be descriptive, specific, and suitable for accessibility, based on the likely article art or social graphic implied by the story.',
+            'featured_image_caption_suggestion should be short, newsroom-friendly, and suitable for a featured image or share graphic caption.',
+            'story_package should be a clean copy-and-paste package with short section headers for SEO title, meta description, focus keyphrase, social copy, image prompt, alt text, and caption.',
             'infographic_prompt should be a concise but vivid prompt for a branded QueerDispatch share graphic or featured image.',
         ]);
 
@@ -160,6 +186,9 @@ final class OpenAI_Client
             'ai_disclosure' => sanitize_textarea_field((string) ($decoded['ai_disclosure'] ?? '')),
             'analysis_notes' => sanitize_textarea_field((string) ($decoded['analysis_notes'] ?? '')),
             'infographic_prompt' => sanitize_textarea_field((string) ($decoded['infographic_prompt'] ?? '')),
+            'featured_image_alt_suggestion' => sanitize_textarea_field((string) ($decoded['featured_image_alt_suggestion'] ?? '')),
+            'featured_image_caption_suggestion' => sanitize_textarea_field((string) ($decoded['featured_image_caption_suggestion'] ?? '')),
+            'story_package' => sanitize_textarea_field((string) ($decoded['story_package'] ?? '')),
             'social_posts' => Meta::sanitize_array($decoded['social_posts'] ?? [], 'social_object'),
             'internal_link_suggestions' => Meta::sanitize_array($decoded['internal_link_suggestions'] ?? [], 'link_object'),
         ];

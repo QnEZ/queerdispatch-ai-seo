@@ -31,7 +31,9 @@ final class Admin_Columns
     {
         $columns['qd_ai_status'] = __('AI SEO', 'queerdispatch-ai-seo');
         $columns['qd_ai_mode'] = __('Article Mode', 'queerdispatch-ai-seo');
+        $columns['qd_ai_beat'] = __('Beat', 'queerdispatch-ai-seo');
         $columns['qd_ai_keyphrase'] = __('Focus Keyphrase', 'queerdispatch-ai-seo');
+        $columns['qd_ai_editorial'] = __('Editorial Status', 'queerdispatch-ai-seo');
         return $columns;
     }
 
@@ -41,8 +43,11 @@ final class Admin_Columns
             $has_title = '' !== trim((string) get_post_meta($post_id, Meta::META_KEYS['seo_title'], true));
             $has_meta = '' !== trim((string) get_post_meta($post_id, Meta::META_KEYS['meta_description'], true));
             $has_social = [] !== Meta::sanitize_array(get_post_meta($post_id, Meta::META_KEYS['social_posts'], true), 'social_object');
+            $has_story = '' !== trim((string) get_post_meta($post_id, Meta::META_KEYS['story_package'], true));
             $status = ($has_title && $has_meta) ? __('Ready', 'queerdispatch-ai-seo') : __('Needs review', 'queerdispatch-ai-seo');
-            if ($has_social && $has_title && $has_meta) {
+            if ($has_social && $has_story && $has_title && $has_meta) {
+                $status = __('Ready + Package', 'queerdispatch-ai-seo');
+            } elseif ($has_social && $has_title && $has_meta) {
                 $status = __('Ready + Social', 'queerdispatch-ai-seo');
             }
             echo esc_html($status);
@@ -51,10 +56,21 @@ final class Admin_Columns
 
         if ('qd_ai_mode' === $column) {
             $mode = (string) get_post_meta($post_id, Meta::META_KEYS['article_mode'], true);
-            if ('' === $mode) {
-                $mode = 'news';
-            }
-            echo esc_html(ucwords(str_replace('_', ' ', $mode)));
+            echo esc_html(ucwords(str_replace('_', ' ', '' !== $mode ? $mode : 'news')));
+            return;
+        }
+
+        if ('qd_ai_beat' === $column) {
+            $beat = (string) get_post_meta($post_id, Meta::META_KEYS['beat_preset'], true);
+            $labels = Settings::get_beat_presets();
+            echo esc_html($labels[$beat] ?? $labels['general']);
+            return;
+        }
+
+        if ('qd_ai_editorial' === $column) {
+            $status = (string) get_post_meta($post_id, Meta::META_KEYS['editorial_status'], true);
+            $labels = Settings::get_editorial_statuses();
+            echo esc_html($labels[$status] ?? $labels['drafted']);
             return;
         }
 

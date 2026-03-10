@@ -51,14 +51,18 @@ final class Bulk_Actions
             if ('' === $mode) {
                 $mode = 'news';
             }
+            $beat = (string) get_post_meta($post_id, Meta::META_KEYS['beat_preset'], true);
+            if ('' === $beat) {
+                $beat = 'general';
+            }
 
-            $result = (new OpenAI_Client())->generate_seo_package(Rest_API::build_payload($post, null, $mode));
+            $result = (new OpenAI_Client())->generate_seo_package(Rest_API::build_payload($post, null, $mode, $beat));
             if (is_wp_error($result)) {
                 $failed++;
                 continue;
             }
 
-            self::persist_result($post_id, $result, $mode);
+            self::persist_result($post_id, $result, $mode, $beat);
             $success++;
             $processed++;
         }
@@ -70,7 +74,7 @@ final class Bulk_Actions
         ], $redirect_to);
     }
 
-    private static function persist_result(int $post_id, array $result, string $mode): void
+    public static function persist_result(int $post_id, array $result, string $mode, string $beat = 'general'): void
     {
         update_post_meta($post_id, Meta::META_KEYS['focus_keyphrase'], $result['focus_keyphrase'] ?? '');
         update_post_meta($post_id, Meta::META_KEYS['keyphrase_variants'], Meta::sanitize_array($result['keyphrase_variants'] ?? [], 'string'));
@@ -83,7 +87,11 @@ final class Bulk_Actions
         update_post_meta($post_id, Meta::META_KEYS['ai_disclosure'], $result['ai_disclosure'] ?? '');
         update_post_meta($post_id, Meta::META_KEYS['analysis_notes'], $result['analysis_notes'] ?? '');
         update_post_meta($post_id, Meta::META_KEYS['article_mode'], sanitize_key($mode));
+        update_post_meta($post_id, Meta::META_KEYS['beat_preset'], sanitize_key($beat));
         update_post_meta($post_id, Meta::META_KEYS['infographic_prompt'], $result['infographic_prompt'] ?? '');
+        update_post_meta($post_id, Meta::META_KEYS['featured_image_alt_suggestion'], $result['featured_image_alt_suggestion'] ?? '');
+        update_post_meta($post_id, Meta::META_KEYS['featured_image_caption_suggestion'], $result['featured_image_caption_suggestion'] ?? '');
+        update_post_meta($post_id, Meta::META_KEYS['story_package'], $result['story_package'] ?? '');
         update_post_meta($post_id, Meta::META_KEYS['social_posts'], Meta::sanitize_array($result['social_posts'] ?? [], 'social_object'));
         update_post_meta($post_id, Meta::META_KEYS['internal_link_suggestions'], Meta::sanitize_array($result['internal_link_suggestions'] ?? [], 'link_object'));
         Integrations::sync_generated_meta($post_id);

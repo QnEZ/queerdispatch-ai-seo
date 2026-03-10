@@ -32,18 +32,10 @@ final class Rest_API
                 'callback'            => [self::class, 'generate'],
                 'permission_callback' => [self::class, 'can_generate'],
                 'args'                => [
-                    'post_id' => [
-                        'type'     => 'integer',
-                        'required' => true,
-                    ],
-                    'content' => [
-                        'type'     => 'string',
-                        'required' => false,
-                    ],
-                    'article_mode' => [
-                        'type'     => 'string',
-                        'required' => false,
-                    ],
+                    'post_id' => ['type' => 'integer', 'required' => true],
+                    'content' => ['type' => 'string', 'required' => false],
+                    'article_mode' => ['type' => 'string', 'required' => false],
+                    'beat_preset' => ['type' => 'string', 'required' => false],
                 ],
             ]
         );
@@ -82,19 +74,27 @@ final class Rest_API
             $article_mode = is_string($saved_mode) && '' !== $saved_mode ? sanitize_key($saved_mode) : 'news';
         }
 
-        $result = (new OpenAI_Client())->generate_seo_package(self::build_payload($post, (string) ($request->get_param('content') ?: $post->post_content), $article_mode));
+        $beat_preset = sanitize_key((string) $request->get_param('beat_preset'));
+        if ('' === $beat_preset) {
+            $saved_preset = get_post_meta($post_id, Meta::META_KEYS['beat_preset'], true);
+            $beat_preset = is_string($saved_preset) && '' !== $saved_preset ? sanitize_key($saved_preset) : 'general';
+        }
+
+        $result = (new OpenAI_Client())->generate_seo_package(self::build_payload($post, (string) ($request->get_param('content') ?: $post->post_content), $article_mode, $beat_preset));
         if (is_wp_error($result)) {
             return $result;
         }
 
         $result['article_mode'] = $article_mode;
+        $result['beat_preset'] = $beat_preset;
 
         return new WP_REST_Response(['data' => $result], 200);
     }
 
-    public static function build_payload(WP_Post $post, ?string $content = null, string $article_mode = 'news'): array
+    public static function build_payload(WP_Post $post, ?string $content = null, string $article_mode = 'news', string $beat_preset = 'general'): array
     {
         $post_id = (int) $post->ID;
+        $thumbnail_id = (int) get_post_thumbnail_id($post_id);
 
         return [
             'site_name' => get_bloginfo('name'),
@@ -107,7 +107,8 @@ final class Rest_API
                 'slug'        => $post->post_name,
                 'excerpt'     => wp_strip_all_tags((string) $post->post_excerpt),
                 'content'     => (string) ($content ?? $post->post_content),
-                'featured_image_alt' => get_post_meta((int) get_post_thumbnail_id($post_id), '_wp_attachment_image_alt', true),
+                'featured_image_alt' => (string) get_post_meta($thumbnail_id, '_wp_attachment_image_alt', true),
+                'featured_image_caption' => $thumbnail_id > 0 ? wp_get_attachment_caption($thumbnail_id) : '',
                 'categories'  => self::get_post_terms($post_id, 'category'),
                 'tags'        => self::get_post_terms($post_id, 'post_tag'),
             ],
@@ -116,6 +117,8 @@ final class Rest_API
                 'brand_voice'            => Settings::get_option('brand_voice', ''),
                 'ai_disclosure_template' => Settings::get_option('ai_disclosure_template', ''),
                 'article_mode'           => $article_mode,
+                'beat_preset'            => $beat_preset,
+                'beat_preset_labels'     => Settings::get_beat_presets(),
                 'features'               => [
                     'excerpt'              => (bool) Settings::get_option('enable_excerpt', '1'),
                     'social'               => (bool) Settings::get_option('enable_social', '1'),
@@ -123,6 +126,8 @@ final class Rest_API
                     'headline_variants'    => (bool) Settings::get_option('enable_headline_variants', '1'),
                     'social_posts'         => (bool) Settings::get_option('enable_social_posts', '1'),
                     'infographic_prompt'   => (bool) Settings::get_option('enable_infographic_prompt', '1'),
+                    'image_metadata'       => (bool) Settings::get_option('enable_image_metadata', '1'),
+                    'story_package'        => (bool) Settings::get_option('enable_story_package', '1'),
                 ],
             ],
             'internal_link_candidates' => self::get_internal_link_candidates($post_id),
@@ -217,7 +222,6 @@ final class Rest_API
         $shared_tags = count(array_intersect(array_map('strtolower', $current_tags), array_map('strtolower', $candidate_tags)));
         $score += $shared_categories * 20;
         $score += $shared_tags * 12;
-
         $score += self::title_similarity_score($current_title, $candidate_title);
 
         $timestamp = strtotime($candidate_date_gmt);
@@ -237,8 +241,7 @@ final class Rest_API
             return 0;
         }
 
-        $shared = count(array_intersect($left_words, $right_words));
-        return $shared * 8;
+        return count(array_intersect($left_words, $right_words)) * 8;
     }
 
     private static function normalize_keywords(string $text): array

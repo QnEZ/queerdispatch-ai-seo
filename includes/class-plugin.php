@@ -104,8 +104,12 @@ final class Plugin
                     'socialPosts'          => (bool) Settings::get_option('enable_social_posts', '1'),
                     'infographicPrompt'    => (bool) Settings::get_option('enable_infographic_prompt', '1'),
                     'autoDisclosureInsert' => (bool) Settings::get_option('auto_insert_disclosure_block', '0'),
+                    'imageMetadata'       => (bool) Settings::get_option('enable_image_metadata', '1'),
+                    'storyPackage'        => (bool) Settings::get_option('enable_story_package', '1'),
                 ],
                 'integrations'  => Integrations::get_active_integrations(),
+                'beatPresets'    => Settings::get_beat_presets(),
+                'editorialStatuses' => Settings::get_editorial_statuses(),
                 'strings'       => [
                     'title'              => __('QueerDispatch AI SEO', 'queerdispatch-ai-seo'),
                     'generate'           => __('Generate SEO package', 'queerdispatch-ai-seo'),

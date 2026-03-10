@@ -80,6 +80,8 @@ final class Settings
             'enable_plugin_integration',
             'enable_social_posts',
             'enable_infographic_prompt',
+            'enable_image_metadata',
+            'enable_story_package',
             'auto_insert_disclosure_block',
             'enable_post_list_columns',
         ] as $key) {
@@ -123,6 +125,8 @@ final class Settings
             'enable_plugin_integration',
             'enable_social_posts',
             'enable_infographic_prompt',
+            'enable_image_metadata',
+            'enable_story_package',
             'auto_insert_disclosure_block',
             'enable_post_list_columns',
         ];
@@ -160,6 +164,8 @@ final class Settings
             'enable_plugin_integration' => '1',
             'enable_social_posts'    => '1',
             'enable_infographic_prompt' => '1',
+            'enable_image_metadata'  => '1',
+            'enable_story_package'   => '1',
             'auto_insert_disclosure_block' => '0',
             'enable_post_list_columns' => '1',
         ];
@@ -180,6 +186,27 @@ final class Settings
         }
 
         return array_values(array_filter(array_map('sanitize_key', $post_types)));
+    }
+
+    public static function get_beat_presets(): array
+    {
+        return [
+            'general' => __('General QueerDispatch', 'queerdispatch-ai-seo'),
+            'policy_watch' => __('Policy Watch', 'queerdispatch-ai-seo'),
+            'state_alert' => __('State Alert', 'queerdispatch-ai-seo'),
+            'media_watch' => __('Media Watch', 'queerdispatch-ai-seo'),
+            'community_voice' => __('Community Voice', 'queerdispatch-ai-seo'),
+            'rights_explainer' => __('Rights Explainer', 'queerdispatch-ai-seo'),
+        ];
+    }
+
+    public static function get_editorial_statuses(): array
+    {
+        return [
+            'drafted' => __('Drafted', 'queerdispatch-ai-seo'),
+            'reviewed' => __('Reviewed', 'queerdispatch-ai-seo'),
+            'approved' => __('Approved', 'queerdispatch-ai-seo'),
+        ];
     }
 
     public static function mask_api_key(string $value): string
@@ -242,10 +269,13 @@ final class Settings
     {
         $descriptions = [
             'enable_plugin_integration' => __('When supported SEO plugins are active, copy generated fields into their meta keys on post save.', 'queerdispatch-ai-seo'),
-            'enable_social_posts' => __('Ask ChatGPT for Facebook, Bluesky, and X-ready promo copy and store it on the post.', 'queerdispatch-ai-seo'),
-            'enable_infographic_prompt' => __('Generate a reusable prompt for matching social graphics or featured images.', 'queerdispatch-ai-seo'),
-            'auto_insert_disclosure_block' => __('Append the AI disclosure to post content on save when the disclosure field is present and not already inserted.', 'queerdispatch-ai-seo'),
-            'enable_post_list_columns' => __('Show AI SEO status, article mode, and focus keyphrase in the post list table.', 'queerdispatch-ai-seo'),
+            'enable_frontend_meta' => __('Output title, description, Open Graph, and X/Twitter tags directly from this plugin when no other SEO plugin is handling them.', 'queerdispatch-ai-seo'),
+            'enable_social_posts' => __('Generate ready-to-post copy for Facebook, Bluesky, and X.', 'queerdispatch-ai-seo'),
+            'enable_infographic_prompt' => __('Generate a branded image prompt for featured images or social graphics.', 'queerdispatch-ai-seo'),
+            'enable_image_metadata' => __('Generate suggested featured image alt text and caption text from article context.', 'queerdispatch-ai-seo'),
+            'enable_story_package' => __('Generate a copy-ready package with article SEO, social copy, and visual prompt sections.', 'queerdispatch-ai-seo'),
+            'auto_insert_disclosure_block' => __('Append an AI disclosure paragraph block to supported post types when a disclosure exists and the post is saved.', 'queerdispatch-ai-seo'),
+            'enable_post_list_columns' => __('Show AI workflow columns in the post list table.', 'queerdispatch-ai-seo'),
         ];
 
         if (! isset($descriptions[$key])) {
@@ -258,25 +288,17 @@ final class Settings
     public static function render_settings_page(): void
     {
         if (! current_user_can('manage_options')) {
-            return;
+            wp_die(esc_html__('You do not have permission to access this page.', 'queerdispatch-ai-seo'));
         }
 
-        $diagnostic = null;
-        if (isset($_POST['qd_ai_seo_run_diagnostic']) && check_admin_referer('qd_ai_seo_run_diagnostic_action')) {
-            $diagnostic = OpenAI_Client::run_diagnostic();
+        $diagnostic_result = null;
+        if (isset($_POST['qd_ai_seo_run_diagnostic'])) {
+            check_admin_referer('qd_ai_seo_run_diagnostic');
+            $diagnostic_result = OpenAI_Client::run_diagnostic();
         }
 
         echo '<div class="wrap">';
         echo '<h1>' . esc_html__('QueerDispatch AI SEO', 'queerdispatch-ai-seo') . '</h1>';
-
-        if ($diagnostic instanceof WP_Error) {
-            echo '<div class="notice notice-error"><p>' . esc_html($diagnostic->get_error_message()) . '</p></div>';
-        } elseif (is_array($diagnostic)) {
-            echo '<div class="notice notice-success"><p>';
-            echo esc_html(sprintf(__('Diagnostic succeeded. Model: %1$s. Latency: %2$d ms. Response: %3$s', 'queerdispatch-ai-seo'), (string) ($diagnostic['model'] ?? ''), (int) ($diagnostic['latency_ms'] ?? 0), (string) ($diagnostic['content'] ?? '')));
-            echo '</p></div>';
-        }
-
         echo '<form method="post" action="options.php">';
         settings_fields('qd_ai_seo');
         do_settings_sections('qd-ai-seo');
@@ -285,11 +307,24 @@ final class Settings
 
         echo '<hr />';
         echo '<h2>' . esc_html__('Connection diagnostic', 'queerdispatch-ai-seo') . '</h2>';
-        echo '<p>' . esc_html__('Send a lightweight request to confirm the current API key and model can reach OpenAI.', 'queerdispatch-ai-seo') . '</p>';
+        echo '<p>' . esc_html__('Run a lightweight API check using the currently saved model and API key.', 'queerdispatch-ai-seo') . '</p>';
         echo '<form method="post">';
-        wp_nonce_field('qd_ai_seo_run_diagnostic_action');
-        submit_button(__('Run diagnostic', 'queerdispatch-ai-seo'), 'secondary', 'qd_ai_seo_run_diagnostic', false);
+        wp_nonce_field('qd_ai_seo_run_diagnostic');
+        submit_button(__('Run OpenAI diagnostic', 'queerdispatch-ai-seo'), 'secondary', 'qd_ai_seo_run_diagnostic', false);
         echo '</form>';
+
+        if (null !== $diagnostic_result) {
+            echo '<div style="margin-top:16px;">';
+            if (is_wp_error($diagnostic_result)) {
+                echo '<div class="notice notice-error"><p>' . esc_html($diagnostic_result->get_error_message()) . '</p></div>';
+            } else {
+                echo '<div class="notice notice-success"><p>';
+                echo esc_html(sprintf(__('Diagnostic OK. Model: %1$s. Latency: %2$dms. Response: %3$s', 'queerdispatch-ai-seo'), (string) ($diagnostic_result['model'] ?? ''), (int) ($diagnostic_result['latency_ms'] ?? 0), (string) ($diagnostic_result['content'] ?? '')));
+                echo '</p></div>';
+            }
+            echo '</div>';
+        }
+
         echo '</div>';
     }
 }

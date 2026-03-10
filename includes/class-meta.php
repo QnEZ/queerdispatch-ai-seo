@@ -23,8 +23,13 @@ final class Meta
         'analysis_notes' => 'qd_analysis_notes',
         'headline_variants' => 'qd_headline_variants',
         'article_mode' => 'qd_article_mode',
+        'beat_preset' => 'qd_beat_preset',
+        'editorial_status' => 'qd_editorial_status',
         'social_posts' => 'qd_social_posts',
         'infographic_prompt' => 'qd_infographic_prompt',
+        'featured_image_alt_suggestion' => 'qd_featured_image_alt_suggestion',
+        'featured_image_caption_suggestion' => 'qd_featured_image_caption_suggestion',
+        'story_package' => 'qd_story_package',
     ];
 
     public static function boot(): void
@@ -45,9 +50,14 @@ final class Meta
                 self::META_KEYS['excerpt_suggestion'],
                 self::META_KEYS['analysis_notes'],
                 self::META_KEYS['article_mode'],
+                self::META_KEYS['beat_preset'],
+                self::META_KEYS['editorial_status'],
                 self::META_KEYS['infographic_prompt'],
+                self::META_KEYS['featured_image_alt_suggestion'],
+                self::META_KEYS['featured_image_caption_suggestion'],
+                self::META_KEYS['story_package'],
             ] as $meta_key) {
-                self::register_string($post_type, $meta_key, 4000);
+                self::register_string($post_type, $meta_key, 6000);
             }
 
             self::register_array($post_type, self::META_KEYS['keyphrase_variants'], 'string');
