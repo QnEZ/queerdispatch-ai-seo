@@ -18,7 +18,7 @@ final class OpenAI_Client
     public function __construct()
     {
         $this->api_key = trim((string) Settings::get_option('api_key', ''));
-        $this->model = trim((string) Settings::get_option('model', 'gpt-5-mini'));
+        $this->model = trim((string) Settings::get_option('model', 'gpt-4o-mini'));
     }
 
     public function is_configured(): bool
@@ -184,14 +184,33 @@ final class OpenAI_Client
 
         $response = $this->request_json([
             'model' => $this->model,
-            'messages' => [
-                ['role' => 'system', 'content' => $system_message],
-                ['role' => 'user', 'content' => $user_message],
+            'input' => [
+                [
+                    'role' => 'system',
+                    'content' => [
+                        [
+                            'type' => 'input_text',
+                            'text' => $system_message,
+                        ],
+                    ],
+                ],
+                [
+                    'role' => 'user',
+                    'content' => [
+                        [
+                            'type' => 'input_text',
+                            'text' => $user_message,
+                        ],
+                    ],
+                ],
             ],
-            'temperature' => 0.3,
-            'response_format' => [
-                'type'        => 'json_schema',
-                'json_schema' => $schema,
+            'text' => [
+                'format' => [
+                    'type' => 'json_schema',
+                    'name' => $schema['name'],
+                    'schema' => $schema['schema'],
+                ],
+                'verbosity' => 'medium',
             ],
         ]);
 
@@ -256,11 +275,10 @@ final class OpenAI_Client
 
         $response = $client->request_json([
             'model' => $client->model,
-            'messages' => [
-                ['role' => 'system', 'content' => 'Return exactly the word OK.'],
-                ['role' => 'user', 'content' => 'Ping'],
+            'input' => 'Return exactly the word OK. Ping',
+            'text' => [
+                'verbosity' => 'low',
             ],
-            'temperature' => 0,
         ]);
 
         if (is_wp_error($response)) {
@@ -278,7 +296,7 @@ final class OpenAI_Client
     {
         $start = microtime(true);
         $response = wp_remote_post(
-            'https://api.openai.com/v1/chat/completions',
+            'https://api.openai.com/v1/responses',
             [
                 'timeout' => absint((string) Settings::get_option('request_timeout', '45')),
                 'headers' => [
@@ -290,29 +308,78 @@ final class OpenAI_Client
         );
 
         if (is_wp_error($response)) {
+            Logger::log('request_transport_error', [
+                'message' => $response->get_error_message(),
+            ]);
             return $response;
         }
 
         $code = (int) wp_remote_retrieve_response_code($response);
-        $body = json_decode((string) wp_remote_retrieve_body($response), true);
+        $raw_body = (string) wp_remote_retrieve_body($response);
+        $body = json_decode($raw_body, true);
 
         if ($code < 200 || $code >= 300) {
+            $api_message = '';
+            if (is_array($body) && isset($body['error']['message']) && is_string($body['error']['message'])) {
+                $api_message = $body['error']['message'];
+            }
+
+            Logger::log('request_api_error', [
+                'status' => $code,
+                'message' => $api_message,
+                'body' => is_array($body) ? $body : ['raw' => $raw_body],
+            ]);
+
             return new WP_Error(
                 'qd_ai_seo_api_error',
-                __('The OpenAI API returned an error.', 'queerdispatch-ai-seo'),
-                ['status' => $code, 'body' => is_array($body) ? $body : []]
+                $api_message !== ''
+                    ? sprintf(__('OpenAI API error (%d): %s', 'queerdispatch-ai-seo'), $code, $api_message)
+                    : __('The OpenAI API returned an error.', 'queerdispatch-ai-seo'),
+                ['status' => $code, 'body' => is_array($body) ? $body : ['raw' => $raw_body]]
             );
         }
 
-        $content = $body['choices'][0]['message']['content'] ?? '';
-        if (! is_string($content) || '' === trim($content)) {
+        $content = $this->extract_output_text(is_array($body) ? $body : []);
+        if ('' === trim($content)) {
+            Logger::log('request_parse_error', [
+                'status' => $code,
+                'body' => is_array($body) ? $body : ['raw' => $raw_body],
+            ]);
             return new WP_Error('qd_ai_seo_empty_response', __('The AI response was empty.', 'queerdispatch-ai-seo'), ['status' => 502]);
         }
 
         return [
             'content' => $content,
             'latency_ms' => (int) round((microtime(true) - $start) * 1000),
+            'response_id' => is_array($body) ? (string) ($body['id'] ?? '') : '',
         ];
+    }
+
+    private function extract_output_text(array $body): string
+    {
+        $content = '';
+
+        if (! isset($body['output']) || ! is_array($body['output'])) {
+            return $content;
+        }
+
+        foreach ($body['output'] as $item) {
+            if (! is_array($item) || ! isset($item['content']) || ! is_array($item['content'])) {
+                continue;
+            }
+
+            foreach ($item['content'] as $part) {
+                if (! is_array($part)) {
+                    continue;
+                }
+
+                if (isset($part['type'], $part['text']) && 'output_text' === $part['type'] && is_string($part['text'])) {
+                    $content .= $part['text'];
+                }
+            }
+        }
+
+        return $content;
     }
 
     private function estimate_tokens(string $text): int
