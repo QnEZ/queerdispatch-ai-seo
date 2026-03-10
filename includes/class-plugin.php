@@ -13,6 +13,7 @@ require_once QD_AI_SEO_PATH . 'includes/class-meta.php';
 require_once QD_AI_SEO_PATH . 'includes/class-openai-client.php';
 require_once QD_AI_SEO_PATH . 'includes/class-rest-api.php';
 require_once QD_AI_SEO_PATH . 'includes/class-seo-output.php';
+require_once QD_AI_SEO_PATH . 'includes/class-integrations.php';
 
 final class Plugin
 {
@@ -38,6 +39,7 @@ final class Plugin
         Meta::boot();
         Rest_API::boot();
         SEO_Output::boot();
+        Integrations::boot();
     }
 
     public function load_textdomain(): void
@@ -92,7 +94,9 @@ final class Plugin
                     'internalLinks'    => (bool) Settings::get_option('enable_internal_links', '1'),
                     'frontEndMeta'     => (bool) Settings::get_option('enable_frontend_meta', '1'),
                     'headlineVariants' => (bool) Settings::get_option('enable_headline_variants', '1'),
+                    'pluginIntegration'=> (bool) Settings::get_option('enable_plugin_integration', '1'),
                 ],
+                'integrations'  => Integrations::get_active_integrations(),
                 'strings'       => [
                     'title'              => __('QueerDispatch AI SEO', 'queerdispatch-ai-seo'),
                     'generate'           => __('Generate SEO package', 'queerdispatch-ai-seo'),

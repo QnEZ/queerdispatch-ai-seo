@@ -26,6 +26,16 @@ final class OpenAI_Client
         return '' !== trim($this->api_key);
     }
 
+    public static function get_article_mode_prompts(): array
+    {
+        return [
+            'news' => 'Treat this as a reported news article. Prioritize clarity, recency, factual restraint, and search intent.',
+            'editorial' => 'Treat this as an editorial or opinion piece. Keep the framing sharp and persuasive, but still credible and non-defamatory.',
+            'explainer' => 'Treat this as an explainer. Emphasize plain language, search-friendly question answering, and contextual clarity.',
+            'social_copy' => 'Treat this as social-first copy. Prioritize shareability, punchy lines, and strong social metadata without becoming vague clickbait.',
+        ];
+    }
+
     public function generate_seo_package(array $payload): array|WP_Error
     {
         if (! $this->is_configured()) {
@@ -80,9 +90,14 @@ final class OpenAI_Client
             ],
         ];
 
+        $article_mode = sanitize_key((string) ($payload['settings']['article_mode'] ?? 'news'));
+        $mode_prompts = self::get_article_mode_prompts();
+        $mode_prompt = $mode_prompts[$article_mode] ?? $mode_prompts['news'];
+
         $system_message = implode("\n", [
             'You are an editorial SEO assistant for QueerDispatch, a queer-focused news and activist publication.',
             (string) Settings::get_option('brand_voice', ''),
+            $mode_prompt,
             'Return only valid JSON matching the provided schema.',
             'Keep SEO title under 65 characters when possible.',
             'Keep meta description under 160 characters when possible.',
@@ -93,8 +108,7 @@ final class OpenAI_Client
         ]);
 
         $user_message = wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-
-        $request_body = [
+        $response = $this->request_json([
             'model' => $this->model,
             'messages' => [
                 ['role' => 'system', 'content' => $system_message],
@@ -105,8 +119,62 @@ final class OpenAI_Client
                 'type'        => 'json_schema',
                 'json_schema' => $schema,
             ],
-        ];
+        ]);
 
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
+        $decoded = json_decode((string) ($response['content'] ?? ''), true);
+        if (! is_array($decoded)) {
+            return new WP_Error('qd_ai_seo_invalid_response', __('The AI response was not valid JSON.', 'queerdispatch-ai-seo'), ['status' => 500]);
+        }
+
+        return [
+            'focus_keyphrase' => sanitize_text_field((string) ($decoded['focus_keyphrase'] ?? '')),
+            'keyphrase_variants' => Meta::sanitize_array($decoded['keyphrase_variants'] ?? [], 'string'),
+            'headline_variants' => Meta::sanitize_array($decoded['headline_variants'] ?? [], 'string'),
+            'seo_title' => sanitize_text_field((string) ($decoded['seo_title'] ?? '')),
+            'meta_description' => sanitize_textarea_field((string) ($decoded['meta_description'] ?? '')),
+            'social_title' => sanitize_text_field((string) ($decoded['social_title'] ?? '')),
+            'social_description' => sanitize_textarea_field((string) ($decoded['social_description'] ?? '')),
+            'excerpt_suggestion' => sanitize_textarea_field((string) ($decoded['excerpt_suggestion'] ?? '')),
+            'ai_disclosure' => sanitize_textarea_field((string) ($decoded['ai_disclosure'] ?? '')),
+            'analysis_notes' => sanitize_textarea_field((string) ($decoded['analysis_notes'] ?? '')),
+            'internal_link_suggestions' => Meta::sanitize_array($decoded['internal_link_suggestions'] ?? [], 'object'),
+        ];
+    }
+
+    public static function run_diagnostic(): array|WP_Error
+    {
+        $client = new self();
+        if (! $client->is_configured()) {
+            return new WP_Error('qd_ai_seo_missing_api_key', __('OpenAI API key is missing.', 'queerdispatch-ai-seo'));
+        }
+
+        $response = $client->request_json([
+            'model' => $client->model,
+            'messages' => [
+                ['role' => 'system', 'content' => 'Return exactly the word OK.'],
+                ['role' => 'user', 'content' => 'Ping'],
+            ],
+            'temperature' => 0,
+        ]);
+
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
+        return [
+            'model' => $client->model,
+            'latency_ms' => $response['latency_ms'] ?? 0,
+            'content' => (string) ($response['content'] ?? ''),
+        ];
+    }
+
+    private function request_json(array $request_body): array|WP_Error
+    {
+        $start = microtime(true);
         $response = wp_remote_post(
             'https://api.openai.com/v1/chat/completions',
             [
@@ -142,23 +210,9 @@ final class OpenAI_Client
             return new WP_Error('qd_ai_seo_empty_response', __('The AI response was empty.', 'queerdispatch-ai-seo'), ['status' => 502]);
         }
 
-        $decoded = json_decode($content, true);
-        if (! is_array($decoded)) {
-            return new WP_Error('qd_ai_seo_invalid_response', __('The AI response was not valid JSON.', 'queerdispatch-ai-seo'), ['status' => 500]);
-        }
-
         return [
-            'focus_keyphrase' => sanitize_text_field((string) ($decoded['focus_keyphrase'] ?? '')),
-            'keyphrase_variants' => Meta::sanitize_array($decoded['keyphrase_variants'] ?? [], 'string'),
-            'headline_variants' => Meta::sanitize_array($decoded['headline_variants'] ?? [], 'string'),
-            'seo_title' => sanitize_text_field((string) ($decoded['seo_title'] ?? '')),
-            'meta_description' => sanitize_textarea_field((string) ($decoded['meta_description'] ?? '')),
-            'social_title' => sanitize_text_field((string) ($decoded['social_title'] ?? '')),
-            'social_description' => sanitize_textarea_field((string) ($decoded['social_description'] ?? '')),
-            'excerpt_suggestion' => sanitize_textarea_field((string) ($decoded['excerpt_suggestion'] ?? '')),
-            'ai_disclosure' => sanitize_textarea_field((string) ($decoded['ai_disclosure'] ?? '')),
-            'analysis_notes' => sanitize_textarea_field((string) ($decoded['analysis_notes'] ?? '')),
-            'internal_link_suggestions' => Meta::sanitize_array($decoded['internal_link_suggestions'] ?? [], 'object'),
+            'content' => $content,
+            'latency_ms' => (int) round((microtime(true) - $start) * 1000),
         ];
     }
 }

@@ -22,6 +22,7 @@ final class Meta
         'excerpt_suggestion' => 'qd_excerpt_suggestion',
         'analysis_notes' => 'qd_analysis_notes',
         'headline_variants' => 'qd_headline_variants',
+        'article_mode' => 'qd_article_mode',
     ];
 
     public static function boot(): void
@@ -41,6 +42,7 @@ final class Meta
                 self::META_KEYS['ai_disclosure'],
                 self::META_KEYS['excerpt_suggestion'],
                 self::META_KEYS['analysis_notes'],
+                self::META_KEYS['article_mode'],
             ] as $meta_key) {
                 self::register_string($post_type, $meta_key, 2000);
             }

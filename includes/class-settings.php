@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace QueerDispatch\AISEO;
 
+use WP_Error;
+
 if (! defined('ABSPATH')) {
     exit;
 }
@@ -69,7 +71,7 @@ final class Settings
             );
         }
 
-        foreach (['enable_excerpt', 'enable_social', 'enable_internal_links', 'enable_frontend_meta', 'enable_headline_variants'] as $key) {
+        foreach (['enable_excerpt', 'enable_social', 'enable_internal_links', 'enable_frontend_meta', 'enable_headline_variants', 'enable_plugin_integration'] as $key) {
             add_settings_field(
                 $key,
                 ucwords(str_replace('_', ' ', $key)),
@@ -113,6 +115,7 @@ final class Settings
             'enable_internal_links'  => empty($input['enable_internal_links']) ? '0' : '1',
             'enable_frontend_meta'   => empty($input['enable_frontend_meta']) ? '0' : '1',
             'enable_headline_variants' => empty($input['enable_headline_variants']) ? '0' : '1',
+            'enable_plugin_integration' => empty($input['enable_plugin_integration']) ? '0' : '1',
         ];
     }
 
@@ -130,6 +133,7 @@ final class Settings
             'enable_internal_links'  => '1',
             'enable_frontend_meta'   => '0',
             'enable_headline_variants' => '1',
+            'enable_plugin_integration' => '1',
         ];
     }
 
@@ -204,7 +208,11 @@ final class Settings
             case 'enable_internal_links':
             case 'enable_frontend_meta':
             case 'enable_headline_variants':
+            case 'enable_plugin_integration':
                 echo '<label><input type="checkbox" name="' . esc_attr($name) . '" value="1" ' . checked('1', (string) $value, false) . ' /> ' . esc_html__('Enabled', 'queerdispatch-ai-seo') . '</label>';
+                if ('enable_plugin_integration' === $key) {
+                    echo '<p class="description">' . esc_html__('When supported SEO plugins are active, copy generated fields into their meta keys on post save.', 'queerdispatch-ai-seo') . '</p>';
+                }
                 break;
         }
     }
@@ -214,16 +222,37 @@ final class Settings
         if (! current_user_can('manage_options')) {
             return;
         }
+
+        $diagnostic = null;
+        if (isset($_POST['qd_ai_seo_run_diagnostic']) && check_admin_referer('qd_ai_seo_run_diagnostic_action', 'qd_ai_seo_run_diagnostic_nonce')) {
+            $diagnostic = OpenAI_Client::run_diagnostic();
+        }
         ?>
         <div class="wrap">
             <h1><?php echo esc_html__('QueerDispatch AI SEO', 'queerdispatch-ai-seo'); ?></h1>
             <p><?php echo esc_html__('Use this plugin as an editorial generation layer. Pair it with a traditional SEO plugin if you want XML sitemaps, canonicals, or deeper technical SEO.', 'queerdispatch-ai-seo'); ?></p>
+
+            <?php if (is_wp_error($diagnostic)) : ?>
+                <div class="notice notice-error"><p><?php echo esc_html($diagnostic->get_error_message()); ?></p></div>
+            <?php elseif (is_array($diagnostic)) : ?>
+                <div class="notice notice-success"><p><?php echo esc_html(sprintf(__('Diagnostic passed. Model: %1$s. Latency: %2$s ms.', 'queerdispatch-ai-seo'), (string) ($diagnostic['model'] ?? 'unknown'), (string) ($diagnostic['latency_ms'] ?? 'n/a'))); ?></p></div>
+            <?php endif; ?>
+
             <form method="post" action="options.php">
                 <?php
                 settings_fields('qd_ai_seo');
                 do_settings_sections('qd-ai-seo');
                 submit_button();
                 ?>
+            </form>
+
+            <hr />
+            <h2><?php echo esc_html__('Diagnostics', 'queerdispatch-ai-seo'); ?></h2>
+            <p><?php echo esc_html__('Run a small authenticated request to confirm your API key and model are working.', 'queerdispatch-ai-seo'); ?></p>
+            <form method="post">
+                <?php wp_nonce_field('qd_ai_seo_run_diagnostic_action', 'qd_ai_seo_run_diagnostic_nonce'); ?>
+                <input type="hidden" name="qd_ai_seo_run_diagnostic" value="1" />
+                <?php submit_button(__('Run OpenAI diagnostic', 'queerdispatch-ai-seo'), 'secondary', 'submit', false); ?>
             </form>
         </div>
         <?php
