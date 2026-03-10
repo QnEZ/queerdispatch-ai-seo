@@ -4,7 +4,7 @@ Tags: seo, ai, openai, metadata, social, editor
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,12 +17,23 @@ QueerDispatch AI SEO adds a Gutenberg sidebar that can generate:
 * SEO title
 * Meta description
 * Focus keyphrase and variants
+* Headline variants
 * Social title and social description
 * Internal-link suggestions from recent site posts
 * Excerpt suggestions
 * AI disclosure copy
+* Editorial notes for review
 
 The plugin is designed for editorial review. It generates suggestions, then lets an editor save them into post meta.
+
+Version 0.2.0 improves the initial scaffold by adding:
+
+* better permission checks
+* API key masking in settings
+* post-type gating in REST generation
+* safer meta sanitization
+* headline variants storage
+* duplicate-SEO-plugin protection for front-end output
 
 == Installation ==
 
@@ -42,7 +53,17 @@ Not completely. It covers editorial metadata generation and can output basic met
 
 No. Editors review and save the generated output.
 
+= Will this conflict with Yoast, Rank Math, or All in One SEO? =
+
+The editorial generation tools can coexist. Front-end meta output in this plugin is automatically suppressed when another major SEO plugin is detected.
+
 == Changelog ==
+
+= 0.2.0 =
+* Added better validation, sanitization, and conflict handling.
+* Added headline variant generation and storage.
+* Masked saved API keys on the settings screen.
+* Disabled front-end meta output by default.
 
 = 0.1.0 =
 * Initial scaffold.

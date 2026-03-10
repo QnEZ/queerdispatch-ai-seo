@@ -40,6 +40,7 @@ final class OpenAI_Client
                 'properties'           => [
                     'focus_keyphrase' => ['type' => 'string'],
                     'keyphrase_variants' => ['type' => 'array', 'items' => ['type' => 'string']],
+                    'headline_variants' => ['type' => 'array', 'items' => ['type' => 'string']],
                     'seo_title' => ['type' => 'string'],
                     'meta_description' => ['type' => 'string'],
                     'social_title' => ['type' => 'string'],
@@ -66,6 +67,7 @@ final class OpenAI_Client
                 'required'             => [
                     'focus_keyphrase',
                     'keyphrase_variants',
+                    'headline_variants',
                     'seo_title',
                     'meta_description',
                     'social_title',
@@ -84,11 +86,26 @@ final class OpenAI_Client
             'Return only valid JSON matching the provided schema.',
             'Keep SEO title under 65 characters when possible.',
             'Keep meta description under 160 characters when possible.',
-            'Use only the provided internal link candidates. Do not invent URLs.',
-            'Do not fabricate facts or legal claims.',
+            'Use only the provided internal link candidates. Do not invent URLs or facts.',
+            'Prefer strong but credible phrasing suitable for a news and advocacy outlet.',
+            'Do not fabricate legal claims, dates, or quotes.',
+            'headline_variants should be 3 to 5 options, each distinct and plausible.',
         ]);
 
         $user_message = wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        $request_body = [
+            'model' => $this->model,
+            'messages' => [
+                ['role' => 'system', 'content' => $system_message],
+                ['role' => 'user', 'content' => $user_message],
+            ],
+            'temperature' => 0.3,
+            'response_format' => [
+                'type'        => 'json_schema',
+                'json_schema' => $schema,
+            ],
+        ];
 
         $response = wp_remote_post(
             'https://api.openai.com/v1/chat/completions',
@@ -98,18 +115,7 @@ final class OpenAI_Client
                     'Authorization' => 'Bearer ' . $this->api_key,
                     'Content-Type'  => 'application/json',
                 ],
-                'body'    => wp_json_encode([
-                    'model' => $this->model,
-                    'messages' => [
-                        ['role' => 'system', 'content' => $system_message],
-                        ['role' => 'user', 'content' => $user_message],
-                    ],
-                    'temperature' => 0.4,
-                    'response_format' => [
-                        'type'        => 'json_schema',
-                        'json_schema' => $schema,
-                    ],
-                ]),
+                'body'    => wp_json_encode($request_body),
             ]
         );
 
@@ -126,18 +132,33 @@ final class OpenAI_Client
                 __('The OpenAI API returned an error.', 'queerdispatch-ai-seo'),
                 [
                     'status' => $code,
-                    'body'   => $body,
+                    'body'   => is_array($body) ? $body : [],
                 ]
             );
         }
 
         $content = $body['choices'][0]['message']['content'] ?? '';
-        $decoded = json_decode((string) $content, true);
+        if (! is_string($content) || '' === trim($content)) {
+            return new WP_Error('qd_ai_seo_empty_response', __('The AI response was empty.', 'queerdispatch-ai-seo'), ['status' => 502]);
+        }
 
+        $decoded = json_decode($content, true);
         if (! is_array($decoded)) {
             return new WP_Error('qd_ai_seo_invalid_response', __('The AI response was not valid JSON.', 'queerdispatch-ai-seo'), ['status' => 500]);
         }
 
-        return $decoded;
+        return [
+            'focus_keyphrase' => sanitize_text_field((string) ($decoded['focus_keyphrase'] ?? '')),
+            'keyphrase_variants' => Meta::sanitize_array($decoded['keyphrase_variants'] ?? [], 'string'),
+            'headline_variants' => Meta::sanitize_array($decoded['headline_variants'] ?? [], 'string'),
+            'seo_title' => sanitize_text_field((string) ($decoded['seo_title'] ?? '')),
+            'meta_description' => sanitize_textarea_field((string) ($decoded['meta_description'] ?? '')),
+            'social_title' => sanitize_text_field((string) ($decoded['social_title'] ?? '')),
+            'social_description' => sanitize_textarea_field((string) ($decoded['social_description'] ?? '')),
+            'excerpt_suggestion' => sanitize_textarea_field((string) ($decoded['excerpt_suggestion'] ?? '')),
+            'ai_disclosure' => sanitize_textarea_field((string) ($decoded['ai_disclosure'] ?? '')),
+            'analysis_notes' => sanitize_textarea_field((string) ($decoded['analysis_notes'] ?? '')),
+            'internal_link_suggestions' => Meta::sanitize_array($decoded['internal_link_suggestions'] ?? [], 'object'),
+        ];
     }
 }

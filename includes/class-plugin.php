@@ -32,6 +32,7 @@ final class Plugin
         add_action('init', [$this, 'load_textdomain']);
         add_action('init', [$this, 'register_assets']);
         add_action('enqueue_block_editor_assets', [$this, 'enqueue_editor_assets']);
+        add_action('admin_notices', [$this, 'maybe_show_conflict_notice']);
 
         Settings::boot();
         Meta::boot();
@@ -70,33 +71,59 @@ final class Plugin
             return;
         }
 
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (null === $screen || ! method_exists($screen, 'is_block_editor') || ! $screen->is_block_editor()) {
+            return;
+        }
+
         wp_enqueue_script('qd-ai-seo-editor');
         wp_localize_script(
             'qd-ai-seo-editor',
             'qdAiSeo',
             [
-                'restUrl'             => esc_url_raw(rest_url('qd-ai-seo/v1/')),
-                'nonce'               => wp_create_nonce('wp_rest'),
-                'defaultModel'        => Settings::get_option('model', 'gpt-5-mini'),
-                'postTypes'           => Settings::get_enabled_post_types(),
-                'metaKeys'            => Meta::META_KEYS,
-                'featureFlags'        => [
-                    'autoExcerpt'     => (bool) Settings::get_option('enable_excerpt', '1'),
-                    'socialFields'    => (bool) Settings::get_option('enable_social', '1'),
-                    'internalLinks'   => (bool) Settings::get_option('enable_internal_links', '1'),
-                    'frontEndMeta'    => (bool) Settings::get_option('enable_frontend_meta', '1'),
+                'restUrl'       => esc_url_raw(rest_url('qd-ai-seo/v1/')),
+                'nonce'         => wp_create_nonce('wp_rest'),
+                'defaultModel'  => Settings::get_option('model', 'gpt-5-mini'),
+                'postTypes'     => Settings::get_enabled_post_types(),
+                'metaKeys'      => Meta::META_KEYS,
+                'featureFlags'  => [
+                    'autoExcerpt'      => (bool) Settings::get_option('enable_excerpt', '1'),
+                    'socialFields'     => (bool) Settings::get_option('enable_social', '1'),
+                    'internalLinks'    => (bool) Settings::get_option('enable_internal_links', '1'),
+                    'frontEndMeta'     => (bool) Settings::get_option('enable_frontend_meta', '1'),
+                    'headlineVariants' => (bool) Settings::get_option('enable_headline_variants', '1'),
                 ],
-                'brandVoice'          => Settings::get_option('brand_voice', ''),
-                'disclosureTemplate'  => Settings::get_option('ai_disclosure_template', ''),
-                'strings'             => [
-                    'title'          => __('QueerDispatch AI SEO', 'queerdispatch-ai-seo'),
-                    'generate'       => __('Generate SEO package', 'queerdispatch-ai-seo'),
-                    'refresh'        => __('Regenerate', 'queerdispatch-ai-seo'),
-                    'save'           => __('Save to post meta', 'queerdispatch-ai-seo'),
-                    'working'        => __('Generating…', 'queerdispatch-ai-seo'),
-                    'error'          => __('Something went wrong while talking to the AI service.', 'queerdispatch-ai-seo'),
+                'strings'       => [
+                    'title'              => __('QueerDispatch AI SEO', 'queerdispatch-ai-seo'),
+                    'generate'           => __('Generate SEO package', 'queerdispatch-ai-seo'),
+                    'refresh'            => __('Regenerate', 'queerdispatch-ai-seo'),
+                    'save'               => __('Save to post meta', 'queerdispatch-ai-seo'),
+                    'working'            => __('Generating…', 'queerdispatch-ai-seo'),
+                    'error'              => __('Something went wrong while talking to the AI service.', 'queerdispatch-ai-seo'),
+                    'saved'              => __('Saved generated fields into post meta.', 'queerdispatch-ai-seo'),
+                    'selectType'         => __('This post type is not enabled in QueerDispatch AI SEO settings.', 'queerdispatch-ai-seo'),
                 ],
             ]
         );
+    }
+
+    public function maybe_show_conflict_notice(): void
+    {
+        if (! current_user_can('manage_options')) {
+            return;
+        }
+
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (null === $screen || 'settings_page_qd-ai-seo' !== $screen->id) {
+            return;
+        }
+
+        if (! SEO_Output::has_conflicting_seo_plugin()) {
+            return;
+        }
+
+        echo '<div class="notice notice-warning"><p>';
+        echo esc_html__('Another SEO plugin appears to be active. Front-end meta output from QueerDispatch AI SEO should usually remain disabled to avoid duplicate tags. You can still use this plugin for editorial generation and post meta.', 'queerdispatch-ai-seo');
+        echo '</p></div>';
     }
 }

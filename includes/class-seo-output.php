@@ -12,24 +12,29 @@ final class SEO_Output
 {
     public static function boot(): void
     {
-        add_filter('document_title_parts', [self::class, 'filter_document_title'], 20);
         add_action('wp_head', [self::class, 'render_meta_tags'], 1);
+        add_filter('pre_get_document_title', [self::class, 'filter_document_title']);
     }
 
-    public static function filter_document_title(array $parts): array
+    public static function has_conflicting_seo_plugin(): bool
+    {
+        return defined('WPSEO_VERSION') || defined('RANK_MATH_VERSION') || defined('AIOSEO_VERSION');
+    }
+
+    public static function filter_document_title(string $title): string
     {
         if (! self::should_output()) {
-            return $parts;
+            return $title;
         }
 
         $post_id = get_queried_object_id();
-        $seo_title = get_post_meta($post_id, Meta::META_KEYS['seo_title'], true);
-
-        if (is_string($seo_title) && '' !== trim($seo_title)) {
-            $parts['title'] = $seo_title;
+        if ($post_id < 1) {
+            return $title;
         }
 
-        return $parts;
+        $custom_title = (string) get_post_meta($post_id, Meta::META_KEYS['seo_title'], true);
+
+        return '' !== trim($custom_title) ? $custom_title : $title;
     }
 
     public static function render_meta_tags(): void
@@ -39,12 +44,15 @@ final class SEO_Output
         }
 
         $post_id = get_queried_object_id();
+        if ($post_id < 1) {
+            return;
+        }
+
+        $seo_title = (string) get_post_meta($post_id, Meta::META_KEYS['seo_title'], true);
         $meta_description = (string) get_post_meta($post_id, Meta::META_KEYS['meta_description'], true);
         $social_title = (string) get_post_meta($post_id, Meta::META_KEYS['social_title'], true);
         $social_description = (string) get_post_meta($post_id, Meta::META_KEYS['social_description'], true);
-        $seo_title = (string) get_post_meta($post_id, Meta::META_KEYS['seo_title'], true);
-
-        $title = '' !== trim($social_title) ? $social_title : ('' !== trim($seo_title) ? $seo_title : single_post_title('', false));
+        $title = '' !== trim($social_title) ? $social_title : ('' !== trim($seo_title) ? $seo_title : get_the_title($post_id));
         $description = '' !== trim($social_description) ? $social_description : $meta_description;
         $url = get_permalink($post_id);
         $image = get_the_post_thumbnail_url($post_id, 'full');
@@ -78,6 +86,10 @@ final class SEO_Output
 
     private static function should_output(): bool
     {
-        return is_singular(Settings::get_enabled_post_types()) && '1' === (string) Settings::get_option('enable_frontend_meta', '1');
+        if (self::has_conflicting_seo_plugin()) {
+            return false;
+        }
+
+        return is_singular(Settings::get_enabled_post_types()) && '1' === (string) Settings::get_option('enable_frontend_meta', '0');
     }
 }

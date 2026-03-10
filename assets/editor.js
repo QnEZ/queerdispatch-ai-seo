@@ -11,10 +11,10 @@
     const enabledTypes = settings.postTypes || ['post'];
 
     const stringifyLines = (items, mapper) => {
-        if (!Array.isArray(items)) {
+        if (!Array.isArray(items) || !items.length) {
             return '';
         }
-        return items.map(mapper).join("\n");
+        return items.map(mapper).join('\n');
     };
 
     const Sidebar = function () {
@@ -33,10 +33,21 @@
 
         useEffect(() => {
             setResult(null);
+            setError('');
+            setNotice('');
         }, [postId]);
 
         if (!enabledTypes.includes(postType)) {
-            return null;
+            return wp.element.createElement(
+                Fragment,
+                null,
+                wp.element.createElement(PluginSidebarMoreMenuItem, { target: 'qd-ai-seo-sidebar' }, settings.strings.title),
+                wp.element.createElement(
+                    PluginSidebar,
+                    { name: 'qd-ai-seo-sidebar', title: settings.strings.title },
+                    wp.element.createElement(Notice, { status: 'warning', isDismissible: false }, settings.strings.selectType)
+                )
+            );
         }
 
         const applyToMeta = () => {
@@ -47,6 +58,7 @@
             const nextMeta = Object.assign({}, meta, {
                 [metaKeys.focus_keyphrase]: result.focus_keyphrase || '',
                 [metaKeys.keyphrase_variants]: result.keyphrase_variants || [],
+                [metaKeys.headline_variants]: result.headline_variants || [],
                 [metaKeys.seo_title]: result.seo_title || '',
                 [metaKeys.meta_description]: result.meta_description || '',
                 [metaKeys.social_title]: result.social_title || '',
@@ -63,7 +75,7 @@
             }
 
             editPost(update);
-            setNotice(__('Saved generated fields into post meta.', 'queerdispatch-ai-seo'));
+            setNotice(settings.strings.saved || __('Saved generated fields into post meta.', 'queerdispatch-ai-seo'));
         };
 
         const runGenerate = async () => {
@@ -100,7 +112,7 @@
                 wp.element.createElement(
                     PanelBody,
                     { title: __('Actions', 'queerdispatch-ai-seo'), initialOpen: true },
-                    wp.element.createElement('p', null, __('Generate a full SEO package for this post from the current draft content.', 'queerdispatch-ai-seo')),
+                    wp.element.createElement('p', null, __('Generate a full SEO package for this draft. Review everything before publishing.', 'queerdispatch-ai-seo')),
                     wp.element.createElement(Button, { variant: 'primary', onClick: runGenerate, disabled: loading || !postId }, loading ? settings.strings.working : settings.strings.generate),
                     ' ',
                     wp.element.createElement(Button, { variant: 'secondary', onClick: applyToMeta, disabled: !result || loading }, settings.strings.save),
@@ -124,6 +136,7 @@
                         wp.element.createElement(TextareaControl, { label: __('Social title', 'queerdispatch-ai-seo'), value: result.social_title || '', readOnly: true }),
                         wp.element.createElement(TextareaControl, { label: __('Social description', 'queerdispatch-ai-seo'), value: result.social_description || '', readOnly: true }),
                         wp.element.createElement(TextareaControl, { label: __('Keyphrase variants', 'queerdispatch-ai-seo'), value: stringifyLines(result.keyphrase_variants, (item) => '- ' + item), readOnly: true }),
+                        wp.element.createElement(TextareaControl, { label: __('Headline variants', 'queerdispatch-ai-seo'), value: stringifyLines(result.headline_variants, (item) => '- ' + item), readOnly: true }),
                         wp.element.createElement(TextareaControl, { label: __('Suggested excerpt', 'queerdispatch-ai-seo'), value: result.excerpt_suggestion || '', readOnly: true }),
                         wp.element.createElement(TextareaControl, { label: __('AI disclosure', 'queerdispatch-ai-seo'), value: result.ai_disclosure || '', readOnly: true }),
                         wp.element.createElement(TextareaControl, { label: __('Analysis notes', 'queerdispatch-ai-seo'), value: result.analysis_notes || '', readOnly: true })
