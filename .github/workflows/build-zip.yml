@@ -1,0 +1,23 @@
+name: Build Plugin Zip
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create plugin zip
+        run: |
+          mkdir -p dist
+          zip -r dist/queerdispatch-ai-seo.zip . \
+            -x "*.git*" "dist/*" "node_modules/*" "vendor/*"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: queerdispatch-ai-seo
+          path: dist/queerdispatch-ai-seo.zip
