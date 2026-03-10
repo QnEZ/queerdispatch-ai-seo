@@ -35,11 +35,16 @@ $meta_keys = [
     'qd_article_mode',
     'qd_beat_preset',
     'qd_editorial_status',
+    'qd_visual_preset',
     'qd_social_posts',
     'qd_infographic_prompt',
     'qd_featured_image_alt_suggestion',
     'qd_featured_image_caption_suggestion',
+    'qd_featured_image_brief',
+    'qd_social_card_copy_pack',
     'qd_story_package',
+    'qd_visual_prompt_variants',
+    'qd_overlay_text_suggestions',
     'qd_generation_history',
 ];
 

@@ -34,6 +34,7 @@ final class Admin_Columns
         $columns['qd_ai_beat'] = __('Beat', 'queerdispatch-ai-seo');
         $columns['qd_ai_keyphrase'] = __('Focus Keyphrase', 'queerdispatch-ai-seo');
         $columns['qd_ai_editorial'] = __('Editorial Status', 'queerdispatch-ai-seo');
+        $columns['qd_ai_visual'] = __('Visual Preset', 'queerdispatch-ai-seo');
         return $columns;
     }
 
@@ -71,6 +72,13 @@ final class Admin_Columns
             $status = (string) get_post_meta($post_id, Meta::META_KEYS['editorial_status'], true);
             $labels = Settings::get_editorial_statuses();
             echo esc_html($labels[$status] ?? $labels['drafted']);
+            return;
+        }
+
+        if ('qd_ai_visual' === $column) {
+            $preset = (string) get_post_meta($post_id, Meta::META_KEYS['visual_preset'], true);
+            $labels = Settings::get_visual_presets();
+            echo esc_html($labels[$preset] ?? $labels['clean_news']);
             return;
         }
 

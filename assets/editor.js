@@ -16,9 +16,11 @@
     ];
     const beatPresets = Object.entries(settings.beatPresets || {}).map(([value, label]) => ({ value, label }));
     const editorialStatuses = Object.entries(settings.editorialStatuses || {}).map(([value, label]) => ({ value, label }));
+    const visualPresets = Object.entries(settings.visualPresets || {}).map(([value, label]) => ({ value, label }));
 
     const stringifyLines = (items, mapFn) => (Array.isArray(items) ? items.map(mapFn).join('\n') : '');
     const prettySocial = (items) => stringifyLines(items, (item) => `[${item.label || item.network}]\n${item.body}\n`);
+    const prettyVisualVariants = (items) => stringifyLines(items, (item) => `[${item.label || item.format}]\n${item.prompt}\n`);
 
     const Sidebar = function () {
         const { meta = {}, postId, postType, postTitle, excerpt, content } = useSelect((select) => {
@@ -42,6 +44,7 @@
         const [articleMode, setArticleMode] = useState(meta[metaKeys.article_mode] || 'news');
         const [beatPreset, setBeatPreset] = useState(meta[metaKeys.beat_preset] || 'general');
         const [editorialStatus, setEditorialStatus] = useState(meta[metaKeys.editorial_status] || 'drafted');
+        const [visualPreset, setVisualPreset] = useState(meta[metaKeys.visual_preset] || 'clean_news');
         const [selectedFields, setSelectedFields] = useState({
             focusKeyphrase: true,
             seoTitle: true,
@@ -55,6 +58,7 @@
             socialPosts: true,
             infographicPrompt: true,
             imageMetadata: true,
+            mediaWorkflow: true,
             storyPackage: true,
         });
 
@@ -81,6 +85,7 @@
             nextMeta[metaKeys.article_mode] = articleMode;
             nextMeta[metaKeys.beat_preset] = beatPreset;
             nextMeta[metaKeys.editorial_status] = editorialStatus;
+            nextMeta[metaKeys.visual_preset] = visualPreset;
 
             if (selectedFields.focusKeyphrase) {
                 nextMeta[metaKeys.focus_keyphrase] = result.focus_keyphrase || '';
@@ -103,6 +108,12 @@
                 nextMeta[metaKeys.featured_image_alt_suggestion] = result.featured_image_alt_suggestion || '';
                 nextMeta[metaKeys.featured_image_caption_suggestion] = result.featured_image_caption_suggestion || '';
             }
+            if (selectedFields.mediaWorkflow) {
+                nextMeta[metaKeys.featured_image_brief] = result.featured_image_brief || '';
+                nextMeta[metaKeys.social_card_copy_pack] = result.social_card_copy_pack || '';
+                nextMeta[metaKeys.visual_prompt_variants] = result.visual_prompt_variants || [];
+                nextMeta[metaKeys.overlay_text_suggestions] = result.overlay_text_suggestions || [];
+            }
             if (selectedFields.storyPackage) nextMeta[metaKeys.story_package] = result.story_package || '';
 
             const update = { meta: nextMeta };
@@ -118,6 +129,7 @@
             nextMeta[metaKeys.article_mode] = articleMode;
             nextMeta[metaKeys.beat_preset] = beatPreset;
             nextMeta[metaKeys.editorial_status] = editorialStatus;
+            nextMeta[metaKeys.visual_preset] = visualPreset;
             editPost({ meta: nextMeta });
             setNotice(__('Saved workflow fields.', 'queerdispatch-ai-seo'));
         };
@@ -136,6 +148,7 @@
                         content,
                         article_mode: articleMode,
                         beat_preset: beatPreset,
+                        visual_preset: visualPreset,
                     },
                 });
                 setResult(response.data || null);
@@ -162,6 +175,7 @@
                     wp.element.createElement(SelectControl, { label: __('Article mode', 'queerdispatch-ai-seo'), value: articleMode, options: articleModes, onChange: setArticleMode }),
                     wp.element.createElement(SelectControl, { label: __('Beat preset', 'queerdispatch-ai-seo'), value: beatPreset, options: beatPresets, onChange: setBeatPreset }),
                     wp.element.createElement(SelectControl, { label: __('Editorial status', 'queerdispatch-ai-seo'), value: editorialStatus, options: editorialStatuses, onChange: setEditorialStatus }),
+                    wp.element.createElement(SelectControl, { label: __('Visual preset', 'queerdispatch-ai-seo'), value: visualPreset, options: visualPresets, onChange: setVisualPreset }),
                     wp.element.createElement(Button, { variant: 'primary', onClick: runGenerate, disabled: loading || !postId }, loading ? settings.strings.working : settings.strings.generate),
                     ' ',
                     wp.element.createElement(Button, { variant: 'secondary', onClick: applyToMeta, disabled: !result || loading }, settings.strings.save),
@@ -184,6 +198,7 @@
                     wp.element.createElement(CheckboxControl, { label: __('Social posts', 'queerdispatch-ai-seo'), checked: selectedFields.socialPosts, onChange: (v) => toggleSelection('socialPosts', v) }),
                     wp.element.createElement(CheckboxControl, { label: __('Infographic prompt', 'queerdispatch-ai-seo'), checked: selectedFields.infographicPrompt, onChange: (v) => toggleSelection('infographicPrompt', v) }),
                     wp.element.createElement(CheckboxControl, { label: __('Image alt + caption suggestions', 'queerdispatch-ai-seo'), checked: selectedFields.imageMetadata, onChange: (v) => toggleSelection('imageMetadata', v) }),
+                    wp.element.createElement(CheckboxControl, { label: __('Media workflow pack', 'queerdispatch-ai-seo'), checked: selectedFields.mediaWorkflow, onChange: (v) => toggleSelection('mediaWorkflow', v) }),
                     wp.element.createElement(CheckboxControl, { label: __('Story package export box', 'queerdispatch-ai-seo'), checked: selectedFields.storyPackage, onChange: (v) => toggleSelection('storyPackage', v) })
                 ),
                 wp.element.createElement(
@@ -213,6 +228,7 @@
                         PanelBody,
                         { title: __('Social promotion copy', 'queerdispatch-ai-seo'), initialOpen: false },
                         wp.element.createElement(TextareaControl, { label: __('Network-ready posts', 'queerdispatch-ai-seo'), value: prettySocial(result.social_posts), readOnly: true }),
+                        wp.element.createElement(TextareaControl, { label: __('Social card copy pack', 'queerdispatch-ai-seo'), value: result.social_card_copy_pack || '', readOnly: true }),
                         wp.element.createElement(TextareaControl, { label: __('Infographic / featured image prompt', 'queerdispatch-ai-seo'), value: result.infographic_prompt || '', readOnly: true })
                     ),
                     wp.element.createElement(
@@ -220,6 +236,13 @@
                         { title: __('Featured image metadata', 'queerdispatch-ai-seo'), initialOpen: false },
                         wp.element.createElement(TextareaControl, { label: __('Alt text suggestion', 'queerdispatch-ai-seo'), value: result.featured_image_alt_suggestion || '', readOnly: true }),
                         wp.element.createElement(TextareaControl, { label: __('Caption suggestion', 'queerdispatch-ai-seo'), value: result.featured_image_caption_suggestion || '', readOnly: true })
+                    ),
+                    wp.element.createElement(
+                        PanelBody,
+                        { title: __('Media workflow pack', 'queerdispatch-ai-seo'), initialOpen: false },
+                        wp.element.createElement(TextareaControl, { label: __('Featured image brief', 'queerdispatch-ai-seo'), value: result.featured_image_brief || '', readOnly: true }),
+                        wp.element.createElement(TextareaControl, { label: __('Overlay text suggestions', 'queerdispatch-ai-seo'), value: stringifyLines(result.overlay_text_suggestions, (item) => '- ' + item), readOnly: true }),
+                        wp.element.createElement(TextareaControl, { label: __('Visual prompt variants', 'queerdispatch-ai-seo'), value: prettyVisualVariants(result.visual_prompt_variants), readOnly: true })
                     ),
                     wp.element.createElement(
                         PanelBody,

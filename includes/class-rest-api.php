@@ -36,6 +36,7 @@ final class Rest_API
                     'content' => ['type' => 'string', 'required' => false],
                     'article_mode' => ['type' => 'string', 'required' => false],
                     'beat_preset' => ['type' => 'string', 'required' => false],
+                    'visual_preset' => ['type' => 'string', 'required' => false],
                 ],
             ]
         );
@@ -84,7 +85,13 @@ final class Rest_API
             $beat_preset = is_string($saved_preset) && '' !== $saved_preset ? sanitize_key($saved_preset) : 'general';
         }
 
-        $payload = self::build_payload($post, (string) ($request->get_param('content') ?: $post->post_content), $article_mode, $beat_preset);
+        $visual_preset = sanitize_key((string) $request->get_param('visual_preset'));
+        if ('' === $visual_preset) {
+            $saved_visual = get_post_meta($post_id, Meta::META_KEYS['visual_preset'], true);
+            $visual_preset = is_string($saved_visual) && '' !== $saved_visual ? sanitize_key($saved_visual) : 'clean_news';
+        }
+
+        $payload = self::build_payload($post, (string) ($request->get_param('content') ?: $post->post_content), $article_mode, $beat_preset, $visual_preset);
         $result = (new OpenAI_Client())->generate_seo_package($payload);
         if (is_wp_error($result)) {
             Logger::log('rest_generate_error', ['post_id' => $post_id, 'error' => Logger::normalize_error($result)]);
@@ -93,13 +100,14 @@ final class Rest_API
 
         $result['article_mode'] = $article_mode;
         $result['beat_preset'] = $beat_preset;
+        $result['visual_preset'] = $visual_preset;
         Permissions::increment_generation_count_for_current_user();
         History::record($post_id, $result, $result['_stats'] ?? []);
 
         return new WP_REST_Response(['data' => $result], 200);
     }
 
-    public static function build_payload(WP_Post $post, ?string $content = null, string $article_mode = 'news', string $beat_preset = 'general'): array
+    public static function build_payload(WP_Post $post, ?string $content = null, string $article_mode = 'news', string $beat_preset = 'general', string $visual_preset = 'clean_news'): array
     {
         $post_id = (int) $post->ID;
         $thumbnail_id = (int) get_post_thumbnail_id($post_id);
@@ -126,7 +134,9 @@ final class Rest_API
                 'ai_disclosure_template' => Settings::get_option('ai_disclosure_template', ''),
                 'article_mode'           => $article_mode,
                 'beat_preset'            => $beat_preset,
+                'visual_preset'          => $visual_preset,
                 'beat_preset_labels'     => Settings::get_beat_presets(),
+                'visual_preset_labels'   => Settings::get_visual_presets(),
                 'features'               => [
                     'excerpt'              => (bool) Settings::get_option('enable_excerpt', '1'),
                     'social'               => (bool) Settings::get_option('enable_social', '1'),

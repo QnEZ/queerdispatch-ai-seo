@@ -48,6 +48,16 @@ final class OpenAI_Client
         ];
     }
 
+    public static function get_visual_preset_prompts(): array
+    {
+        return [
+            'clean_news' => 'Clean News: crisp newsroom look, strong hierarchy, restrained drama, readable overlays, publication-ready.',
+            'urgent_alert' => 'Urgent Alert: high-contrast, high-urgency social graphic treatment for breaking policy or rights alerts without becoming misleading.',
+            'editorial_heat' => 'Editorial Heat: sharper activist energy, bold framing, emotionally resonant composition, still legible and credible.',
+            'rights_explainer' => 'Rights Explainer: educational visual framing, plain-language diagram or explainer-card sensibility, clarity over spectacle.',
+        ];
+    }
+
     public function generate_seo_package(array $payload): array|WP_Error
     {
         if (! $this->is_configured()) {
@@ -73,7 +83,10 @@ final class OpenAI_Client
                     'infographic_prompt' => ['type' => 'string'],
                     'featured_image_alt_suggestion' => ['type' => 'string'],
                     'featured_image_caption_suggestion' => ['type' => 'string'],
+                    'featured_image_brief' => ['type' => 'string'],
+                    'social_card_copy_pack' => ['type' => 'string'],
                     'story_package' => ['type' => 'string'],
+                    'overlay_text_suggestions' => ['type' => 'array', 'items' => ['type' => 'string']],
                     'social_posts' => [
                         'type' => 'array',
                         'items' => [
@@ -85,6 +98,19 @@ final class OpenAI_Client
                                 'body' => ['type' => 'string'],
                             ],
                             'required' => ['network', 'label', 'body'],
+                        ],
+                    ],
+                    'visual_prompt_variants' => [
+                        'type' => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'additionalProperties' => false,
+                            'properties' => [
+                                'format' => ['type' => 'string'],
+                                'label' => ['type' => 'string'],
+                                'prompt' => ['type' => 'string'],
+                            ],
+                            'required' => ['format', 'label', 'prompt'],
                         ],
                     ],
                     'internal_link_suggestions' => [
@@ -104,7 +130,7 @@ final class OpenAI_Client
                     ],
                 ],
                 'required'             => [
-                    'focus_keyphrase','keyphrase_variants','headline_variants','seo_title','meta_description','social_title','social_description','excerpt_suggestion','ai_disclosure','analysis_notes','infographic_prompt','featured_image_alt_suggestion','featured_image_caption_suggestion','story_package','social_posts','internal_link_suggestions',
+                    'focus_keyphrase','keyphrase_variants','headline_variants','seo_title','meta_description','social_title','social_description','excerpt_suggestion','ai_disclosure','analysis_notes','infographic_prompt','featured_image_alt_suggestion','featured_image_caption_suggestion','featured_image_brief','social_card_copy_pack','story_package','overlay_text_suggestions','social_posts','visual_prompt_variants','internal_link_suggestions',
                 ],
             ],
         ];
@@ -117,21 +143,31 @@ final class OpenAI_Client
         $beat_prompts = self::get_beat_preset_prompts();
         $beat_prompt = $beat_prompts[$beat_preset] ?? $beat_prompts['general'];
 
-        $system_message = implode("\n", [
-            'You are an editorial SEO assistant for QueerDispatch, a queer-focused news and activist publication.',
+        $visual_preset = sanitize_key((string) ($payload['settings']['visual_preset'] ?? 'clean_news'));
+        $visual_prompts = self::get_visual_preset_prompts();
+        $visual_prompt = $visual_prompts[$visual_preset] ?? $visual_prompts['clean_news'];
+
+        $system_message = implode("
+", [
+            'You are an editorial SEO and visual packaging assistant for QueerDispatch, a queer-focused news and activist publication.',
             (string) Settings::get_option('brand_voice', ''),
             $mode_prompt,
             $beat_prompt,
+            $visual_prompt,
             'Return only valid JSON matching the provided schema.',
             'Keep SEO title under 65 characters when possible.',
             'Keep meta description under 160 characters when possible.',
+            'For visual outputs, design for publication-ready queer news graphics with strong readability and accessible overlay text.',
+            'Provide visual prompt variants for square, vertical story, and landscape banner formats.',
+            'Overlay text suggestions should be short, legible, and safe for image-based headlines.',
             'Use only the provided internal link candidates. Do not invent URLs or facts.',
             'Prefer strong but credible phrasing suitable for a news and advocacy outlet.',
             'Do not fabricate legal claims, dates, or quotes.',
         ]);
 
         $user_message = wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        $estimated_prompt_tokens = $this->estimate_tokens($system_message . "\n" . $user_message);
+        $estimated_prompt_tokens = $this->estimate_tokens($system_message . "
+" . $user_message);
         $token_cap = absint((string) Settings::get_option('per_request_token_cap', '12000'));
         if ($estimated_prompt_tokens > $token_cap) {
             return new WP_Error('qd_ai_seo_token_cap', __('This generation request is larger than the configured token cap.', 'queerdispatch-ai-seo'), ['status' => 400]);
@@ -143,6 +179,7 @@ final class OpenAI_Client
             'estimated_prompt_tokens' => $estimated_prompt_tokens,
             'article_mode' => $article_mode,
             'beat_preset' => $beat_preset,
+            'visual_preset' => $visual_preset,
         ]);
 
         $response = $this->request_json([
@@ -195,8 +232,12 @@ final class OpenAI_Client
             'infographic_prompt' => sanitize_textarea_field((string) ($decoded['infographic_prompt'] ?? '')),
             'featured_image_alt_suggestion' => sanitize_textarea_field((string) ($decoded['featured_image_alt_suggestion'] ?? '')),
             'featured_image_caption_suggestion' => sanitize_textarea_field((string) ($decoded['featured_image_caption_suggestion'] ?? '')),
+            'featured_image_brief' => sanitize_textarea_field((string) ($decoded['featured_image_brief'] ?? '')),
+            'social_card_copy_pack' => sanitize_textarea_field((string) ($decoded['social_card_copy_pack'] ?? '')),
             'story_package' => sanitize_textarea_field((string) ($decoded['story_package'] ?? '')),
+            'overlay_text_suggestions' => Meta::sanitize_array($decoded['overlay_text_suggestions'] ?? [], 'string'),
             'social_posts' => Meta::sanitize_array($decoded['social_posts'] ?? [], 'social_object'),
+            'visual_prompt_variants' => Meta::sanitize_array($decoded['visual_prompt_variants'] ?? [], 'visual_prompt_object'),
             'internal_link_suggestions' => Meta::sanitize_array($decoded['internal_link_suggestions'] ?? [], 'link_object'),
             '_stats' => [
                 'latency_ms' => absint($response['latency_ms'] ?? 0),

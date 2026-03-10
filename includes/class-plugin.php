@@ -117,6 +117,7 @@ final class Plugin
                 'integrations'  => Integrations::get_active_integrations(),
                 'beatPresets'   => Settings::get_beat_presets(),
                 'editorialStatuses' => Settings::get_editorial_statuses(),
+                'visualPresets' => Settings::get_visual_presets(),
                 'strings'       => [
                     'title'              => __('QueerDispatch AI SEO', 'queerdispatch-ai-seo'),
                     'generate'           => __('Generate SEO package', 'queerdispatch-ai-seo'),

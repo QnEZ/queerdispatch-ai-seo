@@ -58,16 +58,19 @@ final class Bulk_Actions
             $beat = (string) get_post_meta($post_id, Meta::META_KEYS['beat_preset'], true);
             $beat = '' !== $beat ? $beat : 'general';
 
-            $result = (new OpenAI_Client())->generate_seo_package(Rest_API::build_payload($post, null, $mode, $beat));
+            $visual = (string) get_post_meta($post_id, Meta::META_KEYS['visual_preset'], true);
+            $visual = '' !== $visual ? $visual : 'clean_news';
+
+            $result = (new OpenAI_Client())->generate_seo_package(Rest_API::build_payload($post, null, $mode, $beat, $visual));
             if (is_wp_error($result)) {
                 Logger::log('bulk_generate_error', ['post_id' => $post_id, 'error' => Logger::normalize_error($result)]);
                 $failed++;
                 continue;
             }
 
-            self::persist_result($post_id, $result, $mode, $beat);
+            self::persist_result($post_id, $result, $mode, $beat, $visual);
             Permissions::increment_generation_count_for_current_user();
-            History::record($post_id, ['seo_title' => $result['seo_title'] ?? '', 'focus_keyphrase' => $result['focus_keyphrase'] ?? '', 'article_mode' => $mode, 'beat_preset' => $beat], $result['_stats'] ?? []);
+            History::record($post_id, ['seo_title' => $result['seo_title'] ?? '', 'focus_keyphrase' => $result['focus_keyphrase'] ?? '', 'article_mode' => $mode, 'beat_preset' => $beat, 'visual_preset' => $visual], $result['_stats'] ?? []);
             $success++;
             $processed++;
         }
@@ -80,7 +83,7 @@ final class Bulk_Actions
         ], $redirect_to);
     }
 
-    public static function persist_result(int $post_id, array $result, string $mode, string $beat = 'general'): void
+    public static function persist_result(int $post_id, array $result, string $mode, string $beat = 'general', string $visual = 'clean_news'): void
     {
         update_post_meta($post_id, Meta::META_KEYS['focus_keyphrase'], $result['focus_keyphrase'] ?? '');
         update_post_meta($post_id, Meta::META_KEYS['keyphrase_variants'], Meta::sanitize_array($result['keyphrase_variants'] ?? [], 'string'));
@@ -94,11 +97,16 @@ final class Bulk_Actions
         update_post_meta($post_id, Meta::META_KEYS['analysis_notes'], $result['analysis_notes'] ?? '');
         update_post_meta($post_id, Meta::META_KEYS['article_mode'], sanitize_key($mode));
         update_post_meta($post_id, Meta::META_KEYS['beat_preset'], sanitize_key($beat));
+        update_post_meta($post_id, Meta::META_KEYS['visual_preset'], sanitize_key($visual));
         update_post_meta($post_id, Meta::META_KEYS['infographic_prompt'], $result['infographic_prompt'] ?? '');
         update_post_meta($post_id, Meta::META_KEYS['featured_image_alt_suggestion'], $result['featured_image_alt_suggestion'] ?? '');
         update_post_meta($post_id, Meta::META_KEYS['featured_image_caption_suggestion'], $result['featured_image_caption_suggestion'] ?? '');
+        update_post_meta($post_id, Meta::META_KEYS['featured_image_brief'], $result['featured_image_brief'] ?? '');
+        update_post_meta($post_id, Meta::META_KEYS['social_card_copy_pack'], $result['social_card_copy_pack'] ?? '');
         update_post_meta($post_id, Meta::META_KEYS['story_package'], $result['story_package'] ?? '');
         update_post_meta($post_id, Meta::META_KEYS['social_posts'], Meta::sanitize_array($result['social_posts'] ?? [], 'social_object'));
+        update_post_meta($post_id, Meta::META_KEYS['visual_prompt_variants'], Meta::sanitize_array($result['visual_prompt_variants'] ?? [], 'visual_prompt_object'));
+        update_post_meta($post_id, Meta::META_KEYS['overlay_text_suggestions'], Meta::sanitize_array($result['overlay_text_suggestions'] ?? [], 'string'));
         update_post_meta($post_id, Meta::META_KEYS['internal_link_suggestions'], Meta::sanitize_array($result['internal_link_suggestions'] ?? [], 'link_object'));
         Integrations::sync_generated_meta($post_id);
     }

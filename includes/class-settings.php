@@ -219,6 +219,16 @@ final class Settings
         ];
     }
 
+    public static function get_visual_presets(): array
+    {
+        return [
+            'clean_news' => __('Clean News', 'queerdispatch-ai-seo'),
+            'urgent_alert' => __('Urgent Alert', 'queerdispatch-ai-seo'),
+            'editorial_heat' => __('Editorial Heat', 'queerdispatch-ai-seo'),
+            'rights_explainer' => __('Rights Explainer', 'queerdispatch-ai-seo'),
+        ];
+    }
+
     public static function export_settings_json(): string
     {
         $settings = get_option(self::OPTION_KEY, self::defaults());

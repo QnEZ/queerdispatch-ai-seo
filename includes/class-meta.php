@@ -25,12 +25,17 @@ final class Meta
         'article_mode' => 'qd_article_mode',
         'beat_preset' => 'qd_beat_preset',
         'editorial_status' => 'qd_editorial_status',
+        'visual_preset' => 'qd_visual_preset',
         'social_posts' => 'qd_social_posts',
         'infographic_prompt' => 'qd_infographic_prompt',
         'featured_image_alt_suggestion' => 'qd_featured_image_alt_suggestion',
         'featured_image_caption_suggestion' => 'qd_featured_image_caption_suggestion',
+        'featured_image_brief' => 'qd_featured_image_brief',
+        'social_card_copy_pack' => 'qd_social_card_copy_pack',
         'story_package' => 'qd_story_package',
         'generation_history' => 'qd_generation_history',
+        'visual_prompt_variants' => 'qd_visual_prompt_variants',
+        'overlay_text_suggestions' => 'qd_overlay_text_suggestions',
     ];
 
     public static function boot(): void
@@ -53,19 +58,24 @@ final class Meta
                 self::META_KEYS['article_mode'],
                 self::META_KEYS['beat_preset'],
                 self::META_KEYS['editorial_status'],
+                self::META_KEYS['visual_preset'],
                 self::META_KEYS['infographic_prompt'],
                 self::META_KEYS['featured_image_alt_suggestion'],
                 self::META_KEYS['featured_image_caption_suggestion'],
+                self::META_KEYS['featured_image_brief'],
+                self::META_KEYS['social_card_copy_pack'],
                 self::META_KEYS['story_package'],
             ] as $meta_key) {
-                self::register_string($post_type, $meta_key, 6000);
+                self::register_string($post_type, $meta_key, 8000);
             }
 
             self::register_array($post_type, self::META_KEYS['keyphrase_variants'], 'string');
             self::register_array($post_type, self::META_KEYS['headline_variants'], 'string');
+            self::register_array($post_type, self::META_KEYS['overlay_text_suggestions'], 'string');
             self::register_array($post_type, self::META_KEYS['internal_link_suggestions'], 'link_object');
             self::register_array($post_type, self::META_KEYS['social_posts'], 'social_object');
             self::register_array($post_type, self::META_KEYS['generation_history'], 'history_object');
+            self::register_array($post_type, self::META_KEYS['visual_prompt_variants'], 'visual_prompt_object');
         }
     }
 
@@ -124,9 +134,19 @@ final class Meta
                     'focus_keyphrase' => ['type' => 'string'],
                     'article_mode' => ['type' => 'string'],
                     'beat_preset' => ['type' => 'string'],
+                    'visual_preset' => ['type' => 'string'],
                     'latency_ms' => ['type' => 'integer'],
                     'estimated_prompt_tokens' => ['type' => 'integer'],
                     'estimated_completion_tokens' => ['type' => 'integer'],
+                ],
+                'additionalProperties' => false,
+            ],
+            'visual_prompt_object' => [
+                'type' => 'object',
+                'properties' => [
+                    'format' => ['type' => 'string'],
+                    'label' => ['type' => 'string'],
+                    'prompt' => ['type' => 'string'],
                 ],
                 'additionalProperties' => false,
             ],
@@ -211,9 +231,29 @@ final class Meta
                     'focus_keyphrase' => sanitize_text_field((string) ($item['focus_keyphrase'] ?? '')),
                     'article_mode' => sanitize_key((string) ($item['article_mode'] ?? 'news')),
                     'beat_preset' => sanitize_key((string) ($item['beat_preset'] ?? 'general')),
+                    'visual_preset' => sanitize_key((string) ($item['visual_preset'] ?? 'clean_news')),
                     'latency_ms' => absint($item['latency_ms'] ?? 0),
                     'estimated_prompt_tokens' => absint($item['estimated_prompt_tokens'] ?? 0),
                     'estimated_completion_tokens' => absint($item['estimated_completion_tokens'] ?? 0),
+                ];
+                continue;
+            }
+
+            if ('visual_prompt_object' === $item_type) {
+                if (! is_array($item)) {
+                    continue;
+                }
+
+                $format = sanitize_key((string) ($item['format'] ?? ''));
+                $label = sanitize_text_field((string) ($item['label'] ?? ''));
+                $prompt = sanitize_textarea_field((string) ($item['prompt'] ?? ''));
+                if ('' === $format && '' === $prompt) {
+                    continue;
+                }
+                $sanitized[] = [
+                    'format' => $format,
+                    'label' => $label,
+                    'prompt' => $prompt,
                 ];
                 continue;
             }

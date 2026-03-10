@@ -26,6 +26,7 @@ final class History
             'focus_keyphrase' => sanitize_text_field((string) ($result['focus_keyphrase'] ?? '')),
             'article_mode' => sanitize_key((string) ($result['article_mode'] ?? 'news')),
             'beat_preset' => sanitize_key((string) ($result['beat_preset'] ?? 'general')),
+            'visual_preset' => sanitize_key((string) ($result['visual_preset'] ?? 'clean_news')),
             'latency_ms' => absint($stats['latency_ms'] ?? 0),
             'estimated_prompt_tokens' => absint($stats['estimated_prompt_tokens'] ?? 0),
             'estimated_completion_tokens' => absint($stats['estimated_completion_tokens'] ?? 0),
