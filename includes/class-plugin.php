@@ -14,6 +14,9 @@ require_once QD_AI_SEO_PATH . 'includes/class-openai-client.php';
 require_once QD_AI_SEO_PATH . 'includes/class-rest-api.php';
 require_once QD_AI_SEO_PATH . 'includes/class-seo-output.php';
 require_once QD_AI_SEO_PATH . 'includes/class-integrations.php';
+require_once QD_AI_SEO_PATH . 'includes/class-content-tools.php';
+require_once QD_AI_SEO_PATH . 'includes/class-admin-columns.php';
+require_once QD_AI_SEO_PATH . 'includes/class-bulk-actions.php';
 
 final class Plugin
 {
@@ -40,6 +43,9 @@ final class Plugin
         Rest_API::boot();
         SEO_Output::boot();
         Integrations::boot();
+        Content_Tools::boot();
+        Admin_Columns::boot();
+        Bulk_Actions::boot();
     }
 
     public function load_textdomain(): void
@@ -89,12 +95,15 @@ final class Plugin
                 'postTypes'     => Settings::get_enabled_post_types(),
                 'metaKeys'      => Meta::META_KEYS,
                 'featureFlags'  => [
-                    'autoExcerpt'      => (bool) Settings::get_option('enable_excerpt', '1'),
-                    'socialFields'     => (bool) Settings::get_option('enable_social', '1'),
-                    'internalLinks'    => (bool) Settings::get_option('enable_internal_links', '1'),
-                    'frontEndMeta'     => (bool) Settings::get_option('enable_frontend_meta', '1'),
-                    'headlineVariants' => (bool) Settings::get_option('enable_headline_variants', '1'),
-                    'pluginIntegration'=> (bool) Settings::get_option('enable_plugin_integration', '1'),
+                    'autoExcerpt'          => (bool) Settings::get_option('enable_excerpt', '1'),
+                    'socialFields'         => (bool) Settings::get_option('enable_social', '1'),
+                    'internalLinks'        => (bool) Settings::get_option('enable_internal_links', '1'),
+                    'frontEndMeta'         => (bool) Settings::get_option('enable_frontend_meta', '1'),
+                    'headlineVariants'     => (bool) Settings::get_option('enable_headline_variants', '1'),
+                    'pluginIntegration'    => (bool) Settings::get_option('enable_plugin_integration', '1'),
+                    'socialPosts'          => (bool) Settings::get_option('enable_social_posts', '1'),
+                    'infographicPrompt'    => (bool) Settings::get_option('enable_infographic_prompt', '1'),
+                    'autoDisclosureInsert' => (bool) Settings::get_option('auto_insert_disclosure_block', '0'),
                 ],
                 'integrations'  => Integrations::get_active_integrations(),
                 'strings'       => [

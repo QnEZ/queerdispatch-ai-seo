@@ -82,8 +82,21 @@ final class Rest_API
             $article_mode = is_string($saved_mode) && '' !== $saved_mode ? sanitize_key($saved_mode) : 'news';
         }
 
-        $client = new OpenAI_Client();
-        $payload = [
+        $result = (new OpenAI_Client())->generate_seo_package(self::build_payload($post, (string) ($request->get_param('content') ?: $post->post_content), $article_mode));
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        $result['article_mode'] = $article_mode;
+
+        return new WP_REST_Response(['data' => $result], 200);
+    }
+
+    public static function build_payload(WP_Post $post, ?string $content = null, string $article_mode = 'news'): array
+    {
+        $post_id = (int) $post->ID;
+
+        return [
             'site_name' => get_bloginfo('name'),
             'site_url'  => home_url('/'),
             'post'      => [
@@ -93,7 +106,7 @@ final class Rest_API
                 'title'       => get_the_title($post_id),
                 'slug'        => $post->post_name,
                 'excerpt'     => wp_strip_all_tags((string) $post->post_excerpt),
-                'content'     => (string) ($request->get_param('content') ?: $post->post_content),
+                'content'     => (string) ($content ?? $post->post_content),
                 'featured_image_alt' => get_post_meta((int) get_post_thumbnail_id($post_id), '_wp_attachment_image_alt', true),
                 'categories'  => self::get_post_terms($post_id, 'category'),
                 'tags'        => self::get_post_terms($post_id, 'post_tag'),
@@ -104,23 +117,16 @@ final class Rest_API
                 'ai_disclosure_template' => Settings::get_option('ai_disclosure_template', ''),
                 'article_mode'           => $article_mode,
                 'features'               => [
-                    'excerpt'           => (bool) Settings::get_option('enable_excerpt', '1'),
-                    'social'            => (bool) Settings::get_option('enable_social', '1'),
-                    'internal_links'    => (bool) Settings::get_option('enable_internal_links', '1'),
-                    'headline_variants' => (bool) Settings::get_option('enable_headline_variants', '1'),
+                    'excerpt'              => (bool) Settings::get_option('enable_excerpt', '1'),
+                    'social'               => (bool) Settings::get_option('enable_social', '1'),
+                    'internal_links'       => (bool) Settings::get_option('enable_internal_links', '1'),
+                    'headline_variants'    => (bool) Settings::get_option('enable_headline_variants', '1'),
+                    'social_posts'         => (bool) Settings::get_option('enable_social_posts', '1'),
+                    'infographic_prompt'   => (bool) Settings::get_option('enable_infographic_prompt', '1'),
                 ],
             ],
             'internal_link_candidates' => self::get_internal_link_candidates($post_id),
         ];
-
-        $result = $client->generate_seo_package($payload);
-        if (is_wp_error($result)) {
-            return $result;
-        }
-
-        $result['article_mode'] = $article_mode;
-
-        return new WP_REST_Response(['data' => $result], 200);
     }
 
     private static function get_post_terms(int $post_id, string $taxonomy): array

@@ -27,6 +27,11 @@ final class Integrations
             return;
         }
 
+        self::sync_generated_meta($post_id);
+    }
+
+    public static function sync_generated_meta(int $post_id): void
+    {
         if ('1' !== (string) Settings::get_option('enable_plugin_integration', '1')) {
             return;
         }

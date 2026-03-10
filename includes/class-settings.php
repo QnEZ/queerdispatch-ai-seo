@@ -71,7 +71,18 @@ final class Settings
             );
         }
 
-        foreach (['enable_excerpt', 'enable_social', 'enable_internal_links', 'enable_frontend_meta', 'enable_headline_variants', 'enable_plugin_integration'] as $key) {
+        foreach ([
+            'enable_excerpt',
+            'enable_social',
+            'enable_internal_links',
+            'enable_frontend_meta',
+            'enable_headline_variants',
+            'enable_plugin_integration',
+            'enable_social_posts',
+            'enable_infographic_prompt',
+            'auto_insert_disclosure_block',
+            'enable_post_list_columns',
+        ] as $key) {
             add_settings_field(
                 $key,
                 ucwords(str_replace('_', ' ', $key)),
@@ -103,20 +114,33 @@ final class Settings
             $post_types = ['post'];
         }
 
-        return [
+        $checkboxes = [
+            'enable_excerpt',
+            'enable_social',
+            'enable_internal_links',
+            'enable_frontend_meta',
+            'enable_headline_variants',
+            'enable_plugin_integration',
+            'enable_social_posts',
+            'enable_infographic_prompt',
+            'auto_insert_disclosure_block',
+            'enable_post_list_columns',
+        ];
+
+        $output = [
             'api_key'                => $api_key,
             'model'                  => isset($input['model']) ? sanitize_text_field((string) $input['model']) : $defaults['model'],
             'brand_voice'            => isset($input['brand_voice']) ? sanitize_textarea_field((string) $input['brand_voice']) : $defaults['brand_voice'],
             'title_formula'          => isset($input['title_formula']) ? sanitize_text_field((string) $input['title_formula']) : $defaults['title_formula'],
             'ai_disclosure_template' => isset($input['ai_disclosure_template']) ? sanitize_textarea_field((string) $input['ai_disclosure_template']) : $defaults['ai_disclosure_template'],
             'enabled_post_types'     => $post_types,
-            'enable_excerpt'         => empty($input['enable_excerpt']) ? '0' : '1',
-            'enable_social'          => empty($input['enable_social']) ? '0' : '1',
-            'enable_internal_links'  => empty($input['enable_internal_links']) ? '0' : '1',
-            'enable_frontend_meta'   => empty($input['enable_frontend_meta']) ? '0' : '1',
-            'enable_headline_variants' => empty($input['enable_headline_variants']) ? '0' : '1',
-            'enable_plugin_integration' => empty($input['enable_plugin_integration']) ? '0' : '1',
         ];
+
+        foreach ($checkboxes as $key) {
+            $output[$key] = empty($input[$key]) ? '0' : '1';
+        }
+
+        return $output;
     }
 
     public static function defaults(): array
@@ -126,7 +150,7 @@ final class Settings
             'model'                  => 'gpt-5-mini',
             'brand_voice'            => 'QueerDispatch voice: sharp, activist, credible, emotionally resonant, but fact-aware and not libelous. Avoid sensationalism that weakens trust. Prefer direct language, strong verbs, concise summaries, and search-friendly clarity.',
             'title_formula'          => '%headline% | QueerDispatch',
-            'ai_disclosure_template' => 'AI disclosure: ChatGPT assisted with SEO drafting, headline options, metadata, and/or editing support. A human editor reviewed the final published version.',
+            'ai_disclosure_template' => 'AI disclosure: ChatGPT assisted with SEO drafting, headline options, metadata, social copy, and/or editing support. A human editor reviewed the final published version.',
             'enabled_post_types'     => ['post'],
             'enable_excerpt'         => '1',
             'enable_social'          => '1',
@@ -134,6 +158,10 @@ final class Settings
             'enable_frontend_meta'   => '0',
             'enable_headline_variants' => '1',
             'enable_plugin_integration' => '1',
+            'enable_social_posts'    => '1',
+            'enable_infographic_prompt' => '1',
+            'auto_insert_disclosure_block' => '0',
+            'enable_post_list_columns' => '1',
         ];
     }
 
@@ -203,18 +231,28 @@ final class Settings
                 echo '<p class="description">' . esc_html__('Only enabled post types will show the editor sidebar and store AI SEO meta.', 'queerdispatch-ai-seo') . '</p>';
                 break;
 
-            case 'enable_excerpt':
-            case 'enable_social':
-            case 'enable_internal_links':
-            case 'enable_frontend_meta':
-            case 'enable_headline_variants':
-            case 'enable_plugin_integration':
+            default:
                 echo '<label><input type="checkbox" name="' . esc_attr($name) . '" value="1" ' . checked('1', (string) $value, false) . ' /> ' . esc_html__('Enabled', 'queerdispatch-ai-seo') . '</label>';
-                if ('enable_plugin_integration' === $key) {
-                    echo '<p class="description">' . esc_html__('When supported SEO plugins are active, copy generated fields into their meta keys on post save.', 'queerdispatch-ai-seo') . '</p>';
-                }
+                echo self::field_description($key);
                 break;
         }
+    }
+
+    private static function field_description(string $key): string
+    {
+        $descriptions = [
+            'enable_plugin_integration' => __('When supported SEO plugins are active, copy generated fields into their meta keys on post save.', 'queerdispatch-ai-seo'),
+            'enable_social_posts' => __('Ask ChatGPT for Facebook, Bluesky, and X-ready promo copy and store it on the post.', 'queerdispatch-ai-seo'),
+            'enable_infographic_prompt' => __('Generate a reusable prompt for matching social graphics or featured images.', 'queerdispatch-ai-seo'),
+            'auto_insert_disclosure_block' => __('Append the AI disclosure to post content on save when the disclosure field is present and not already inserted.', 'queerdispatch-ai-seo'),
+            'enable_post_list_columns' => __('Show AI SEO status, article mode, and focus keyphrase in the post list table.', 'queerdispatch-ai-seo'),
+        ];
+
+        if (! isset($descriptions[$key])) {
+            return '';
+        }
+
+        return '<p class="description">' . esc_html($descriptions[$key]) . '</p>';
     }
 
     public static function render_settings_page(): void
@@ -224,37 +262,34 @@ final class Settings
         }
 
         $diagnostic = null;
-        if (isset($_POST['qd_ai_seo_run_diagnostic']) && check_admin_referer('qd_ai_seo_run_diagnostic_action', 'qd_ai_seo_run_diagnostic_nonce')) {
+        if (isset($_POST['qd_ai_seo_run_diagnostic']) && check_admin_referer('qd_ai_seo_run_diagnostic_action')) {
             $diagnostic = OpenAI_Client::run_diagnostic();
         }
-        ?>
-        <div class="wrap">
-            <h1><?php echo esc_html__('QueerDispatch AI SEO', 'queerdispatch-ai-seo'); ?></h1>
-            <p><?php echo esc_html__('Use this plugin as an editorial generation layer. Pair it with a traditional SEO plugin if you want XML sitemaps, canonicals, or deeper technical SEO.', 'queerdispatch-ai-seo'); ?></p>
 
-            <?php if (is_wp_error($diagnostic)) : ?>
-                <div class="notice notice-error"><p><?php echo esc_html($diagnostic->get_error_message()); ?></p></div>
-            <?php elseif (is_array($diagnostic)) : ?>
-                <div class="notice notice-success"><p><?php echo esc_html(sprintf(__('Diagnostic passed. Model: %1$s. Latency: %2$s ms.', 'queerdispatch-ai-seo'), (string) ($diagnostic['model'] ?? 'unknown'), (string) ($diagnostic['latency_ms'] ?? 'n/a'))); ?></p></div>
-            <?php endif; ?>
+        echo '<div class="wrap">';
+        echo '<h1>' . esc_html__('QueerDispatch AI SEO', 'queerdispatch-ai-seo') . '</h1>';
 
-            <form method="post" action="options.php">
-                <?php
-                settings_fields('qd_ai_seo');
-                do_settings_sections('qd-ai-seo');
-                submit_button();
-                ?>
-            </form>
+        if ($diagnostic instanceof WP_Error) {
+            echo '<div class="notice notice-error"><p>' . esc_html($diagnostic->get_error_message()) . '</p></div>';
+        } elseif (is_array($diagnostic)) {
+            echo '<div class="notice notice-success"><p>';
+            echo esc_html(sprintf(__('Diagnostic succeeded. Model: %1$s. Latency: %2$d ms. Response: %3$s', 'queerdispatch-ai-seo'), (string) ($diagnostic['model'] ?? ''), (int) ($diagnostic['latency_ms'] ?? 0), (string) ($diagnostic['content'] ?? '')));
+            echo '</p></div>';
+        }
 
-            <hr />
-            <h2><?php echo esc_html__('Diagnostics', 'queerdispatch-ai-seo'); ?></h2>
-            <p><?php echo esc_html__('Run a small authenticated request to confirm your API key and model are working.', 'queerdispatch-ai-seo'); ?></p>
-            <form method="post">
-                <?php wp_nonce_field('qd_ai_seo_run_diagnostic_action', 'qd_ai_seo_run_diagnostic_nonce'); ?>
-                <input type="hidden" name="qd_ai_seo_run_diagnostic" value="1" />
-                <?php submit_button(__('Run OpenAI diagnostic', 'queerdispatch-ai-seo'), 'secondary', 'submit', false); ?>
-            </form>
-        </div>
-        <?php
+        echo '<form method="post" action="options.php">';
+        settings_fields('qd_ai_seo');
+        do_settings_sections('qd-ai-seo');
+        submit_button();
+        echo '</form>';
+
+        echo '<hr />';
+        echo '<h2>' . esc_html__('Connection diagnostic', 'queerdispatch-ai-seo') . '</h2>';
+        echo '<p>' . esc_html__('Send a lightweight request to confirm the current API key and model can reach OpenAI.', 'queerdispatch-ai-seo') . '</p>';
+        echo '<form method="post">';
+        wp_nonce_field('qd_ai_seo_run_diagnostic_action');
+        submit_button(__('Run diagnostic', 'queerdispatch-ai-seo'), 'secondary', 'qd_ai_seo_run_diagnostic', false);
+        echo '</form>';
+        echo '</div>';
     }
 }

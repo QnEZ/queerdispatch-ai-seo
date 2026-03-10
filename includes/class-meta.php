@@ -23,6 +23,8 @@ final class Meta
         'analysis_notes' => 'qd_analysis_notes',
         'headline_variants' => 'qd_headline_variants',
         'article_mode' => 'qd_article_mode',
+        'social_posts' => 'qd_social_posts',
+        'infographic_prompt' => 'qd_infographic_prompt',
     ];
 
     public static function boot(): void
@@ -43,13 +45,15 @@ final class Meta
                 self::META_KEYS['excerpt_suggestion'],
                 self::META_KEYS['analysis_notes'],
                 self::META_KEYS['article_mode'],
+                self::META_KEYS['infographic_prompt'],
             ] as $meta_key) {
-                self::register_string($post_type, $meta_key, 2000);
+                self::register_string($post_type, $meta_key, 4000);
             }
 
             self::register_array($post_type, self::META_KEYS['keyphrase_variants'], 'string');
             self::register_array($post_type, self::META_KEYS['headline_variants'], 'string');
-            self::register_array($post_type, self::META_KEYS['internal_link_suggestions'], 'object');
+            self::register_array($post_type, self::META_KEYS['internal_link_suggestions'], 'link_object');
+            self::register_array($post_type, self::META_KEYS['social_posts'], 'social_object');
         }
     }
 
@@ -78,8 +82,8 @@ final class Meta
 
     private static function register_array(string $post_type, string $meta_key, string $item_type): void
     {
-        $items_schema = 'object' === $item_type
-            ? [
+        $items_schema = match ($item_type) {
+            'link_object' => [
                 'type' => 'object',
                 'properties' => [
                     'post_id' => ['type' => 'integer'],
@@ -89,10 +93,18 @@ final class Meta
                     'reason' => ['type' => 'string'],
                 ],
                 'additionalProperties' => false,
-            ]
-            : [
-                'type' => 'string',
-            ];
+            ],
+            'social_object' => [
+                'type' => 'object',
+                'properties' => [
+                    'network' => ['type' => 'string'],
+                    'label' => ['type' => 'string'],
+                    'body' => ['type' => 'string'],
+                ],
+                'additionalProperties' => false,
+            ],
+            default => ['type' => 'string'],
+        };
 
         register_post_meta(
             $post_type,
@@ -124,7 +136,7 @@ final class Meta
 
         $sanitized = [];
         foreach ($value as $item) {
-            if ('object' === $item_type) {
+            if ('link_object' === $item_type) {
                 if (! is_array($item)) {
                     continue;
                 }
@@ -135,6 +147,27 @@ final class Meta
                     'url' => isset($item['url']) ? esc_url_raw((string) $item['url']) : '',
                     'anchor' => isset($item['anchor']) ? sanitize_text_field((string) $item['anchor']) : '',
                     'reason' => isset($item['reason']) ? sanitize_textarea_field((string) $item['reason']) : '',
+                ];
+                continue;
+            }
+
+            if ('social_object' === $item_type) {
+                if (! is_array($item)) {
+                    continue;
+                }
+
+                $network = isset($item['network']) ? sanitize_key((string) $item['network']) : '';
+                $label = isset($item['label']) ? sanitize_text_field((string) $item['label']) : '';
+                $body = isset($item['body']) ? sanitize_textarea_field((string) $item['body']) : '';
+
+                if ('' === $network && '' === $body) {
+                    continue;
+                }
+
+                $sanitized[] = [
+                    'network' => $network,
+                    'label' => '' !== $label ? $label : ucfirst(str_replace('_', ' ', $network)),
+                    'body' => $body,
                 ];
                 continue;
             }

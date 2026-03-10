@@ -58,6 +58,20 @@ final class OpenAI_Client
                     'excerpt_suggestion' => ['type' => 'string'],
                     'ai_disclosure' => ['type' => 'string'],
                     'analysis_notes' => ['type' => 'string'],
+                    'infographic_prompt' => ['type' => 'string'],
+                    'social_posts' => [
+                        'type' => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'additionalProperties' => false,
+                            'properties' => [
+                                'network' => ['type' => 'string'],
+                                'label' => ['type' => 'string'],
+                                'body' => ['type' => 'string'],
+                            ],
+                            'required' => ['network', 'label', 'body'],
+                        ],
+                    ],
                     'internal_link_suggestions' => [
                         'type' => 'array',
                         'items' => [
@@ -85,6 +99,8 @@ final class OpenAI_Client
                     'excerpt_suggestion',
                     'ai_disclosure',
                     'analysis_notes',
+                    'infographic_prompt',
+                    'social_posts',
                     'internal_link_suggestions',
                 ],
             ],
@@ -105,6 +121,8 @@ final class OpenAI_Client
             'Prefer strong but credible phrasing suitable for a news and advocacy outlet.',
             'Do not fabricate legal claims, dates, or quotes.',
             'headline_variants should be 3 to 5 options, each distinct and plausible.',
+            'social_posts should include one item each for Facebook, Bluesky, and X.',
+            'infographic_prompt should be a concise but vivid prompt for a branded QueerDispatch share graphic or featured image.',
         ]);
 
         $user_message = wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -141,7 +159,9 @@ final class OpenAI_Client
             'excerpt_suggestion' => sanitize_textarea_field((string) ($decoded['excerpt_suggestion'] ?? '')),
             'ai_disclosure' => sanitize_textarea_field((string) ($decoded['ai_disclosure'] ?? '')),
             'analysis_notes' => sanitize_textarea_field((string) ($decoded['analysis_notes'] ?? '')),
-            'internal_link_suggestions' => Meta::sanitize_array($decoded['internal_link_suggestions'] ?? [], 'object'),
+            'infographic_prompt' => sanitize_textarea_field((string) ($decoded['infographic_prompt'] ?? '')),
+            'social_posts' => Meta::sanitize_array($decoded['social_posts'] ?? [], 'social_object'),
+            'internal_link_suggestions' => Meta::sanitize_array($decoded['internal_link_suggestions'] ?? [], 'link_object'),
         ];
     }
 

@@ -1,14 +1,16 @@
 (function (wp, settings) {
+    if (!wp || !settings || !settings.metaKeys) {
+        return;
+    }
+
     const { registerPlugin } = wp.plugins;
     const { PluginSidebar, PluginSidebarMoreMenuItem } = wp.editPost;
-    const { PanelBody, Button, TextControl, TextareaControl, Notice, Spinner, SelectControl, CheckboxControl } = wp.components;
-    const { Fragment, useState, useEffect } = wp.element;
+    const { PanelBody, Button, Notice, Spinner, TextControl, TextareaControl, SelectControl, CheckboxControl } = wp.components;
+    const { Fragment, useState } = wp.element;
     const { useSelect, useDispatch } = wp.data;
     const apiFetch = wp.apiFetch;
     const { __ } = wp.i18n;
 
-    const metaKeys = settings.metaKeys || {};
-    const enabledTypes = settings.postTypes || ['post'];
     const articleModes = [
         { label: __('News', 'queerdispatch-ai-seo'), value: 'news' },
         { label: __('Editorial', 'queerdispatch-ai-seo'), value: 'editorial' },
@@ -16,64 +18,49 @@
         { label: __('Social Copy', 'queerdispatch-ai-seo'), value: 'social_copy' },
     ];
 
-    const stringifyLines = (items, mapper) => {
-        if (!Array.isArray(items) || !items.length) {
-            return '';
-        }
-        return items.map(mapper).join('\n');
-    };
+    const stringifyLines = (items, mapper) => Array.isArray(items) ? items.map(mapper).join("\n") : '';
+    const prettySocial = (items) => Array.isArray(items) ? items.map((item) => `${item.label || item.network}: ${item.body}`).join("\n\n") : '';
 
-    const defaultSelections = {
-        focusKeyphrase: true,
-        seoTitle: true,
-        metaDescription: true,
-        socialFields: true,
-        excerpt: true,
-        disclosure: true,
-        notes: true,
-        internalLinks: true,
-        headlineVariants: true,
-    };
+    const Sidebar = () => {
+        const metaKeys = settings.metaKeys;
+        const { postId, postType, postTitle, content, excerpt, meta } = useSelect((select) => {
+            const editor = select('core/editor');
+            return {
+                postId: editor.getCurrentPostId(),
+                postType: editor.getCurrentPostType(),
+                postTitle: editor.getEditedPostAttribute('title') || '',
+                content: editor.getEditedPostContent() || '',
+                excerpt: editor.getEditedPostAttribute('excerpt') || '',
+                meta: editor.getEditedPostAttribute('meta') || {},
+            };
+        }, []);
 
-    const Sidebar = function () {
-        const postType = useSelect((select) => select('core/editor').getCurrentPostType(), []);
-        const postId = useSelect((select) => select('core/editor').getCurrentPostId(), []);
-        const postTitle = useSelect((select) => select('core/editor').getEditedPostAttribute('title') || '', []);
-        const content = useSelect((select) => select('core/editor').getEditedPostContent(), []);
-        const excerpt = useSelect((select) => select('core/editor').getEditedPostAttribute('excerpt') || '', []);
-        const meta = useSelect((select) => select('core/editor').getEditedPostAttribute('meta') || {}, []);
         const { editPost } = useDispatch('core/editor');
-
         const [loading, setLoading] = useState(false);
         const [error, setError] = useState('');
         const [notice, setNotice] = useState('');
         const [result, setResult] = useState(null);
         const [articleMode, setArticleMode] = useState(meta[metaKeys.article_mode] || 'news');
-        const [selectedFields, setSelectedFields] = useState(defaultSelections);
+        const [selectedFields, setSelectedFields] = useState({
+            focusKeyphrase: true,
+            seoTitle: true,
+            metaDescription: true,
+            socialFields: true,
+            excerpt: true,
+            disclosure: true,
+            notes: true,
+            internalLinks: true,
+            headlineVariants: true,
+            socialPosts: true,
+            infographicPrompt: true,
+        });
 
-        useEffect(() => {
-            setResult(null);
-            setError('');
-            setNotice('');
-            setArticleMode(meta[metaKeys.article_mode] || 'news');
-            setSelectedFields(defaultSelections);
-        }, [postId]);
-
-        if (!enabledTypes.includes(postType)) {
-            return wp.element.createElement(
-                Fragment,
-                null,
-                wp.element.createElement(PluginSidebarMoreMenuItem, { target: 'qd-ai-seo-sidebar' }, settings.strings.title),
-                wp.element.createElement(
-                    PluginSidebar,
-                    { name: 'qd-ai-seo-sidebar', title: settings.strings.title },
-                    wp.element.createElement(Notice, { status: 'warning', isDismissible: false }, settings.strings.selectType)
-                )
-            );
+        if (!settings.postTypes.includes(postType)) {
+            return null;
         }
 
-        const toggleSelection = (key, checked) => {
-            setSelectedFields(Object.assign({}, selectedFields, { [key]: checked }));
+        const toggleSelection = (key, value) => {
+            setSelectedFields({ ...selectedFields, [key]: value });
         };
 
         const applyToMeta = () => {
@@ -81,10 +68,7 @@
                 return;
             }
 
-            const nextMeta = Object.assign({}, meta, {
-                [metaKeys.article_mode]: articleMode,
-            });
-
+            const nextMeta = { ...meta, [metaKeys.article_mode]: articleMode };
             if (selectedFields.focusKeyphrase) {
                 nextMeta[metaKeys.focus_keyphrase] = result.focus_keyphrase || '';
                 nextMeta[metaKeys.keyphrase_variants] = result.keyphrase_variants || [];
@@ -113,6 +97,12 @@
             }
             if (selectedFields.internalLinks) {
                 nextMeta[metaKeys.internal_link_suggestions] = result.internal_link_suggestions || [];
+            }
+            if (selectedFields.socialPosts) {
+                nextMeta[metaKeys.social_posts] = result.social_posts || [];
+            }
+            if (selectedFields.infographicPrompt) {
+                nextMeta[metaKeys.infographic_prompt] = result.infographic_prompt || '';
             }
 
             const update = { meta: nextMeta };
@@ -147,14 +137,6 @@
             }
         };
 
-        const activeIntegrationText = [];
-        if (settings.integrations && settings.integrations.yoast) {
-            activeIntegrationText.push('Yoast');
-        }
-        if (settings.integrations && settings.integrations.rank_math) {
-            activeIntegrationText.push('Rank Math');
-        }
-
         return wp.element.createElement(
             Fragment,
             null,
@@ -164,13 +146,10 @@
                 { name: 'qd-ai-seo-sidebar', title: settings.strings.title },
                 error ? wp.element.createElement(Notice, { status: 'error', isDismissible: true, onRemove: () => setError('') }, error) : null,
                 notice ? wp.element.createElement(Notice, { status: 'success', isDismissible: true, onRemove: () => setNotice('') }, notice) : null,
-                activeIntegrationText.length && settings.featureFlags.pluginIntegration
-                    ? wp.element.createElement(Notice, { status: 'info', isDismissible: false }, __('Active SEO integration sync:', 'queerdispatch-ai-seo') + ' ' + activeIntegrationText.join(', '))
-                    : null,
                 wp.element.createElement(
                     PanelBody,
                     { title: __('Actions', 'queerdispatch-ai-seo'), initialOpen: true },
-                    wp.element.createElement('p', null, __('Generate a full SEO package for this draft. Review everything before publishing.', 'queerdispatch-ai-seo')),
+                    wp.element.createElement('p', null, __('Generate a full SEO, social, and visual prompt package for this draft. Review everything before publishing.', 'queerdispatch-ai-seo')),
                     wp.element.createElement(SelectControl, {
                         label: __('Article mode', 'queerdispatch-ai-seo'),
                         value: articleMode,
@@ -193,7 +172,9 @@
                     wp.element.createElement(CheckboxControl, { label: __('AI disclosure', 'queerdispatch-ai-seo'), checked: selectedFields.disclosure, onChange: (v) => toggleSelection('disclosure', v) }),
                     wp.element.createElement(CheckboxControl, { label: __('Analysis notes', 'queerdispatch-ai-seo'), checked: selectedFields.notes, onChange: (v) => toggleSelection('notes', v) }),
                     wp.element.createElement(CheckboxControl, { label: __('Internal link suggestions', 'queerdispatch-ai-seo'), checked: selectedFields.internalLinks, onChange: (v) => toggleSelection('internalLinks', v) }),
-                    wp.element.createElement(CheckboxControl, { label: __('Headline variants', 'queerdispatch-ai-seo'), checked: selectedFields.headlineVariants, onChange: (v) => toggleSelection('headlineVariants', v) })
+                    wp.element.createElement(CheckboxControl, { label: __('Headline variants', 'queerdispatch-ai-seo'), checked: selectedFields.headlineVariants, onChange: (v) => toggleSelection('headlineVariants', v) }),
+                    wp.element.createElement(CheckboxControl, { label: __('Social posts', 'queerdispatch-ai-seo'), checked: selectedFields.socialPosts, onChange: (v) => toggleSelection('socialPosts', v) }),
+                    wp.element.createElement(CheckboxControl, { label: __('Infographic prompt', 'queerdispatch-ai-seo'), checked: selectedFields.infographicPrompt, onChange: (v) => toggleSelection('infographicPrompt', v) })
                 ),
                 wp.element.createElement(
                     PanelBody,
@@ -217,6 +198,12 @@
                         wp.element.createElement(TextareaControl, { label: __('Suggested excerpt', 'queerdispatch-ai-seo'), value: result.excerpt_suggestion || '', readOnly: true }),
                         wp.element.createElement(TextareaControl, { label: __('AI disclosure', 'queerdispatch-ai-seo'), value: result.ai_disclosure || '', readOnly: true }),
                         wp.element.createElement(TextareaControl, { label: __('Analysis notes', 'queerdispatch-ai-seo'), value: result.analysis_notes || '', readOnly: true })
+                    ),
+                    wp.element.createElement(
+                        PanelBody,
+                        { title: __('Social promotion copy', 'queerdispatch-ai-seo'), initialOpen: false },
+                        wp.element.createElement(TextareaControl, { label: __('Network-ready posts', 'queerdispatch-ai-seo'), value: prettySocial(result.social_posts), readOnly: true }),
+                        wp.element.createElement(TextareaControl, { label: __('Infographic / featured image prompt', 'queerdispatch-ai-seo'), value: result.infographic_prompt || '', readOnly: true })
                     ),
                     wp.element.createElement(
                         PanelBody,
