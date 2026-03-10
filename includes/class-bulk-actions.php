@@ -39,30 +39,35 @@ final class Bulk_Actions
         $success = 0;
         $failed = 0;
         $processed = 0;
+        $queued = 0;
 
-        foreach (array_slice(array_map('absint', $post_ids), 0, 20) as $post_id) {
+        foreach (array_slice(array_map('absint', $post_ids), 0, 10) as $post_id) {
             $post = get_post($post_id);
-            if (! $post instanceof WP_Post || ! current_user_can('edit_post', $post_id)) {
+            if (! $post instanceof WP_Post || ! Permissions::current_user_can_generate($post_id)) {
                 $failed++;
                 continue;
             }
 
+            if (Permissions::user_is_over_daily_limit()) {
+                $queued++;
+                continue;
+            }
+
             $mode = (string) get_post_meta($post_id, Meta::META_KEYS['article_mode'], true);
-            if ('' === $mode) {
-                $mode = 'news';
-            }
+            $mode = '' !== $mode ? $mode : 'news';
             $beat = (string) get_post_meta($post_id, Meta::META_KEYS['beat_preset'], true);
-            if ('' === $beat) {
-                $beat = 'general';
-            }
+            $beat = '' !== $beat ? $beat : 'general';
 
             $result = (new OpenAI_Client())->generate_seo_package(Rest_API::build_payload($post, null, $mode, $beat));
             if (is_wp_error($result)) {
+                Logger::log('bulk_generate_error', ['post_id' => $post_id, 'error' => Logger::normalize_error($result)]);
                 $failed++;
                 continue;
             }
 
             self::persist_result($post_id, $result, $mode, $beat);
+            Permissions::increment_generation_count_for_current_user();
+            History::record($post_id, ['seo_title' => $result['seo_title'] ?? '', 'focus_keyphrase' => $result['focus_keyphrase'] ?? '', 'article_mode' => $mode, 'beat_preset' => $beat], $result['_stats'] ?? []);
             $success++;
             $processed++;
         }
@@ -71,6 +76,7 @@ final class Bulk_Actions
             'qd_bulk_generated' => $success,
             'qd_bulk_failed' => $failed,
             'qd_bulk_processed' => $processed,
+            'qd_bulk_queued' => $queued,
         ], $redirect_to);
     }
 
@@ -106,9 +112,10 @@ final class Bulk_Actions
         $generated = absint((string) ($_REQUEST['qd_bulk_generated'] ?? 0));
         $failed = absint((string) ($_REQUEST['qd_bulk_failed'] ?? 0));
         $processed = absint((string) ($_REQUEST['qd_bulk_processed'] ?? 0));
+        $queued = absint((string) ($_REQUEST['qd_bulk_queued'] ?? 0));
 
         echo '<div class="notice notice-success is-dismissible"><p>';
-        echo esc_html(sprintf(__('QueerDispatch AI SEO generated %1$d package(s). Failed: %2$d. Processed: %3$d.', 'queerdispatch-ai-seo'), $generated, $failed, $processed));
+        echo esc_html(sprintf(__('QueerDispatch AI SEO generated %1$d package(s). Failed: %2$d. Processed now: %3$d. Deferred by limits: %4$d.', 'queerdispatch-ai-seo'), $generated, $failed, $processed, $queued));
         echo '</p></div>';
     }
 }

@@ -30,6 +30,7 @@ final class Meta
         'featured_image_alt_suggestion' => 'qd_featured_image_alt_suggestion',
         'featured_image_caption_suggestion' => 'qd_featured_image_caption_suggestion',
         'story_package' => 'qd_story_package',
+        'generation_history' => 'qd_generation_history',
     ];
 
     public static function boot(): void
@@ -64,6 +65,7 @@ final class Meta
             self::register_array($post_type, self::META_KEYS['headline_variants'], 'string');
             self::register_array($post_type, self::META_KEYS['internal_link_suggestions'], 'link_object');
             self::register_array($post_type, self::META_KEYS['social_posts'], 'social_object');
+            self::register_array($post_type, self::META_KEYS['generation_history'], 'history_object');
         }
     }
 
@@ -110,6 +112,21 @@ final class Meta
                     'network' => ['type' => 'string'],
                     'label' => ['type' => 'string'],
                     'body' => ['type' => 'string'],
+                ],
+                'additionalProperties' => false,
+            ],
+            'history_object' => [
+                'type' => 'object',
+                'properties' => [
+                    'time' => ['type' => 'string'],
+                    'user_id' => ['type' => 'integer'],
+                    'seo_title' => ['type' => 'string'],
+                    'focus_keyphrase' => ['type' => 'string'],
+                    'article_mode' => ['type' => 'string'],
+                    'beat_preset' => ['type' => 'string'],
+                    'latency_ms' => ['type' => 'integer'],
+                    'estimated_prompt_tokens' => ['type' => 'integer'],
+                    'estimated_completion_tokens' => ['type' => 'integer'],
                 ],
                 'additionalProperties' => false,
             ],
@@ -178,6 +195,25 @@ final class Meta
                     'network' => $network,
                     'label' => '' !== $label ? $label : ucfirst(str_replace('_', ' ', $network)),
                     'body' => $body,
+                ];
+                continue;
+            }
+
+            if ('history_object' === $item_type) {
+                if (! is_array($item)) {
+                    continue;
+                }
+
+                $sanitized[] = [
+                    'time' => sanitize_text_field((string) ($item['time'] ?? '')),
+                    'user_id' => absint($item['user_id'] ?? 0),
+                    'seo_title' => sanitize_text_field((string) ($item['seo_title'] ?? '')),
+                    'focus_keyphrase' => sanitize_text_field((string) ($item['focus_keyphrase'] ?? '')),
+                    'article_mode' => sanitize_key((string) ($item['article_mode'] ?? 'news')),
+                    'beat_preset' => sanitize_key((string) ($item['beat_preset'] ?? 'general')),
+                    'latency_ms' => absint($item['latency_ms'] ?? 0),
+                    'estimated_prompt_tokens' => absint($item['estimated_prompt_tokens'] ?? 0),
+                    'estimated_completion_tokens' => absint($item['estimated_completion_tokens'] ?? 0),
                 ];
                 continue;
             }

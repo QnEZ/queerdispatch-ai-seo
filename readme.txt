@@ -3,7 +3,7 @@ Contributors: queerdispatch
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 0.5.0
+Stable tag: 0.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -27,6 +27,9 @@ Version 0.5.0 adds:
 4. Add your OpenAI API key and choose enabled post types.
 
 == Changelog ==
+= 0.6.0 =
+* Added request logging, generation history, role controls, token caps, settings import/export, diagnostics, and uninstall cleanup.
+
 = 0.5.0 =
 * Added beat preset selection.
 * Added featured image alt text and caption suggestions.

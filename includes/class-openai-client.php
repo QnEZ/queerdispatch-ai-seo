@@ -104,22 +104,7 @@ final class OpenAI_Client
                     ],
                 ],
                 'required'             => [
-                    'focus_keyphrase',
-                    'keyphrase_variants',
-                    'headline_variants',
-                    'seo_title',
-                    'meta_description',
-                    'social_title',
-                    'social_description',
-                    'excerpt_suggestion',
-                    'ai_disclosure',
-                    'analysis_notes',
-                    'infographic_prompt',
-                    'featured_image_alt_suggestion',
-                    'featured_image_caption_suggestion',
-                    'story_package',
-                    'social_posts',
-                    'internal_link_suggestions',
+                    'focus_keyphrase','keyphrase_variants','headline_variants','seo_title','meta_description','social_title','social_description','excerpt_suggestion','ai_disclosure','analysis_notes','infographic_prompt','featured_image_alt_suggestion','featured_image_caption_suggestion','story_package','social_posts','internal_link_suggestions',
                 ],
             ],
         ];
@@ -143,15 +128,23 @@ final class OpenAI_Client
             'Use only the provided internal link candidates. Do not invent URLs or facts.',
             'Prefer strong but credible phrasing suitable for a news and advocacy outlet.',
             'Do not fabricate legal claims, dates, or quotes.',
-            'headline_variants should be 3 to 5 options, each distinct and plausible.',
-            'social_posts should include one item each for Facebook, Bluesky, and X.',
-            'featured_image_alt_suggestion should be descriptive, specific, and suitable for accessibility, based on the likely article art or social graphic implied by the story.',
-            'featured_image_caption_suggestion should be short, newsroom-friendly, and suitable for a featured image or share graphic caption.',
-            'story_package should be a clean copy-and-paste package with short section headers for SEO title, meta description, focus keyphrase, social copy, image prompt, alt text, and caption.',
-            'infographic_prompt should be a concise but vivid prompt for a branded QueerDispatch share graphic or featured image.',
         ]);
 
         $user_message = wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $estimated_prompt_tokens = $this->estimate_tokens($system_message . "\n" . $user_message);
+        $token_cap = absint((string) Settings::get_option('per_request_token_cap', '12000'));
+        if ($estimated_prompt_tokens > $token_cap) {
+            return new WP_Error('qd_ai_seo_token_cap', __('This generation request is larger than the configured token cap.', 'queerdispatch-ai-seo'), ['status' => 400]);
+        }
+
+        Logger::log('request_started', [
+            'model' => $this->model,
+            'post_id' => absint($payload['post']['id'] ?? 0),
+            'estimated_prompt_tokens' => $estimated_prompt_tokens,
+            'article_mode' => $article_mode,
+            'beat_preset' => $beat_preset,
+        ]);
+
         $response = $this->request_json([
             'model' => $this->model,
             'messages' => [
@@ -166,6 +159,11 @@ final class OpenAI_Client
         ]);
 
         if (is_wp_error($response)) {
+            Logger::log('request_failed', [
+                'model' => $this->model,
+                'post_id' => absint($payload['post']['id'] ?? 0),
+                'error' => self::flatten_error($response),
+            ]);
             return $response;
         }
 
@@ -173,6 +171,15 @@ final class OpenAI_Client
         if (! is_array($decoded)) {
             return new WP_Error('qd_ai_seo_invalid_response', __('The AI response was not valid JSON.', 'queerdispatch-ai-seo'), ['status' => 500]);
         }
+
+        $estimated_completion_tokens = $this->estimate_tokens((string) ($response['content'] ?? ''));
+        Logger::log('request_completed', [
+            'model' => $this->model,
+            'post_id' => absint($payload['post']['id'] ?? 0),
+            'latency_ms' => absint($response['latency_ms'] ?? 0),
+            'estimated_prompt_tokens' => $estimated_prompt_tokens,
+            'estimated_completion_tokens' => $estimated_completion_tokens,
+        ]);
 
         return [
             'focus_keyphrase' => sanitize_text_field((string) ($decoded['focus_keyphrase'] ?? '')),
@@ -191,6 +198,11 @@ final class OpenAI_Client
             'story_package' => sanitize_textarea_field((string) ($decoded['story_package'] ?? '')),
             'social_posts' => Meta::sanitize_array($decoded['social_posts'] ?? [], 'social_object'),
             'internal_link_suggestions' => Meta::sanitize_array($decoded['internal_link_suggestions'] ?? [], 'link_object'),
+            '_stats' => [
+                'latency_ms' => absint($response['latency_ms'] ?? 0),
+                'estimated_prompt_tokens' => $estimated_prompt_tokens,
+                'estimated_completion_tokens' => $estimated_completion_tokens,
+            ],
         ];
     }
 
@@ -227,7 +239,7 @@ final class OpenAI_Client
         $response = wp_remote_post(
             'https://api.openai.com/v1/chat/completions',
             [
-                'timeout' => 45,
+                'timeout' => absint((string) Settings::get_option('request_timeout', '45')),
                 'headers' => [
                     'Authorization' => 'Bearer ' . $this->api_key,
                     'Content-Type'  => 'application/json',
@@ -247,10 +259,7 @@ final class OpenAI_Client
             return new WP_Error(
                 'qd_ai_seo_api_error',
                 __('The OpenAI API returned an error.', 'queerdispatch-ai-seo'),
-                [
-                    'status' => $code,
-                    'body'   => is_array($body) ? $body : [],
-                ]
+                ['status' => $code, 'body' => is_array($body) ? $body : []]
             );
         }
 
@@ -263,5 +272,15 @@ final class OpenAI_Client
             'content' => $content,
             'latency_ms' => (int) round((microtime(true) - $start) * 1000),
         ];
+    }
+
+    private function estimate_tokens(string $text): int
+    {
+        return max(1, (int) ceil(mb_strlen($text) / 4));
+    }
+
+    private static function flatten_error(WP_Error $error): string
+    {
+        return $error->get_error_code() . ': ' . $error->get_error_message();
     }
 }

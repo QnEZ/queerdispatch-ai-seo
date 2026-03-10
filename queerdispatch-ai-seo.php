@@ -3,7 +3,7 @@
  * Plugin Name: QueerDispatch AI SEO
  * Plugin URI:  https://queerdispatch.org/
  * Description: AI-assisted SEO, social metadata, excerpts, internal-link suggestions, disclosure helpers, and social copy tools for QueerDispatch.
- * Version:     0.5.0
+ * Version:     0.6.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author:      OpenAI / QueerDispatch
@@ -26,7 +26,7 @@ if (version_compare(PHP_VERSION, '8.1', '<')) {
 }
 
 if (! defined('QD_AI_SEO_VERSION')) {
-    define('QD_AI_SEO_VERSION', '0.5.0');
+    define('QD_AI_SEO_VERSION', '0.6.0');
 }
 
 if (! defined('QD_AI_SEO_FILE')) {

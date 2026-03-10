@@ -48,8 +48,12 @@ final class Rest_API
             return new WP_Error('qd_ai_seo_invalid_post', __('A valid post ID is required.', 'queerdispatch-ai-seo'), ['status' => 400]);
         }
 
-        if (! current_user_can('edit_post', $post_id)) {
-            return new WP_Error('qd_ai_seo_cannot_edit', __('You cannot edit this post.', 'queerdispatch-ai-seo'), ['status' => 403]);
+        if (! Permissions::current_user_can_generate($post_id)) {
+            return new WP_Error('qd_ai_seo_cannot_edit', __('You cannot run AI generation for this post.', 'queerdispatch-ai-seo'), ['status' => 403]);
+        }
+
+        if (Permissions::user_is_over_daily_limit()) {
+            return new WP_Error('qd_ai_seo_daily_limit', __('You have reached the daily AI generation limit for your account.', 'queerdispatch-ai-seo'), ['status' => 429]);
         }
 
         return true;
@@ -80,13 +84,17 @@ final class Rest_API
             $beat_preset = is_string($saved_preset) && '' !== $saved_preset ? sanitize_key($saved_preset) : 'general';
         }
 
-        $result = (new OpenAI_Client())->generate_seo_package(self::build_payload($post, (string) ($request->get_param('content') ?: $post->post_content), $article_mode, $beat_preset));
+        $payload = self::build_payload($post, (string) ($request->get_param('content') ?: $post->post_content), $article_mode, $beat_preset);
+        $result = (new OpenAI_Client())->generate_seo_package($payload);
         if (is_wp_error($result)) {
+            Logger::log('rest_generate_error', ['post_id' => $post_id, 'error' => Logger::normalize_error($result)]);
             return $result;
         }
 
         $result['article_mode'] = $article_mode;
         $result['beat_preset'] = $beat_preset;
+        Permissions::increment_generation_count_for_current_user();
+        History::record($post_id, $result, $result['_stats'] ?? []);
 
         return new WP_REST_Response(['data' => $result], 200);
     }
@@ -130,7 +138,7 @@ final class Rest_API
                     'story_package'        => (bool) Settings::get_option('enable_story_package', '1'),
                 ],
             ],
-            'internal_link_candidates' => self::get_internal_link_candidates($post_id),
+            'internal_link_candidates' => self::get_internal_link_candidates($post_id, (string) ($content ?? $post->post_content)),
         ];
     }
 
@@ -141,118 +149,56 @@ final class Rest_API
             return [];
         }
 
-        return array_values(array_filter(array_map(static function ($term): string {
-            return isset($term->name) ? sanitize_text_field((string) $term->name) : '';
-        }, $terms)));
+        return array_values(array_map(static fn($term): string => sanitize_text_field((string) $term->name), $terms));
     }
 
-    private static function get_internal_link_candidates(int $post_id): array
+    private static function get_internal_link_candidates(int $post_id, string $content): array
     {
-        $current_title = (string) get_the_title($post_id);
-        $current_categories = self::get_post_terms($post_id, 'category');
-        $current_tags = self::get_post_terms($post_id, 'post_tag');
-
-        $query = new WP_Query([
-            'post_type'           => Settings::get_enabled_post_types(),
-            'post_status'         => 'publish',
-            'posts_per_page'      => 60,
-            'post__not_in'        => [$post_id],
-            'orderby'             => 'date',
-            'order'               => 'DESC',
-            'ignore_sticky_posts' => true,
-            'no_found_rows'       => true,
-        ]);
-
-        if (! $query->have_posts()) {
+        if ('1' !== (string) Settings::get_option('enable_internal_links', '1')) {
             return [];
         }
 
-        $items = [];
+        $words = preg_split('/\s+/', strtolower(wp_strip_all_tags($content))) ?: [];
+        $keywords = array_values(array_unique(array_filter($words, static fn(string $word): bool => strlen($word) > 5)));
+        $keywords = array_slice($keywords, 0, 10);
+
+        $query = new WP_Query([
+            'post_type' => Settings::get_enabled_post_types(),
+            'post_status' => 'publish',
+            'posts_per_page' => 8,
+            'post__not_in' => [$post_id],
+            'ignore_sticky_posts' => true,
+        ]);
+
+        $results = [];
         foreach ($query->posts as $candidate) {
-            if (! $candidate instanceof WP_Post) {
-                continue;
+            $title = get_the_title($candidate->ID);
+            $score = 0;
+            foreach ($keywords as $keyword) {
+                if (str_contains(strtolower($title), $keyword)) {
+                    $score += 3;
+                }
             }
+            $categories = self::get_post_terms((int) $candidate->ID, 'category');
+            $tags = self::get_post_terms((int) $candidate->ID, 'post_tag');
+            $score += count($categories) + count($tags);
 
-            $url = get_permalink($candidate);
-            if (! is_string($url) || '' === $url) {
-                continue;
-            }
-
-            $candidate_categories = self::get_post_terms((int) $candidate->ID, 'category');
-            $candidate_tags = self::get_post_terms((int) $candidate->ID, 'post_tag');
-            $score = self::score_candidate(
-                $current_title,
-                (string) get_the_title($candidate),
-                $current_categories,
-                $candidate_categories,
-                $current_tags,
-                $candidate_tags,
-                (string) $candidate->post_date_gmt
-            );
-
-            $items[] = [
+            $results[] = [
                 'post_id' => (int) $candidate->ID,
-                'title'   => get_the_title($candidate),
-                'url'     => $url,
-                'excerpt' => wp_trim_words(wp_strip_all_tags((string) $candidate->post_content), 30),
-                'date'    => get_the_date('c', $candidate),
-                'categories' => $candidate_categories,
-                'tags' => $candidate_tags,
-                'score'   => $score,
+                'title' => $title,
+                'url' => get_permalink($candidate->ID),
+                'anchor' => $title,
+                'reason' => sprintf(__('Related post score: %d', 'queerdispatch-ai-seo'), $score),
+                '_score' => $score,
             ];
         }
+        wp_reset_postdata();
 
-        usort($items, static fn(array $a, array $b): int => ($b['score'] ?? 0) <=> ($a['score'] ?? 0));
-
-        return array_slice($items, 0, 24);
-    }
-
-    private static function score_candidate(
-        string $current_title,
-        string $candidate_title,
-        array $current_categories,
-        array $candidate_categories,
-        array $current_tags,
-        array $candidate_tags,
-        string $candidate_date_gmt
-    ): int {
-        $score = 0;
-
-        $shared_categories = count(array_intersect(array_map('strtolower', $current_categories), array_map('strtolower', $candidate_categories)));
-        $shared_tags = count(array_intersect(array_map('strtolower', $current_tags), array_map('strtolower', $candidate_tags)));
-        $score += $shared_categories * 20;
-        $score += $shared_tags * 12;
-        $score += self::title_similarity_score($current_title, $candidate_title);
-
-        $timestamp = strtotime($candidate_date_gmt);
-        if (false !== $timestamp) {
-            $age_days = max(0, (time() - $timestamp) / DAY_IN_SECONDS);
-            $score += max(0, 20 - (int) floor($age_days / 14));
-        }
-
-        return $score;
-    }
-
-    private static function title_similarity_score(string $left, string $right): int
-    {
-        $left_words = self::normalize_keywords($left);
-        $right_words = self::normalize_keywords($right);
-        if ([] === $left_words || [] === $right_words) {
-            return 0;
-        }
-
-        return count(array_intersect($left_words, $right_words)) * 8;
-    }
-
-    private static function normalize_keywords(string $text): array
-    {
-        $text = strtolower(wp_strip_all_tags($text));
-        $text = preg_replace('/[^a-z0-9\s]/', ' ', $text) ?: '';
-        $parts = preg_split('/\s+/', $text) ?: [];
-        $parts = array_filter($parts, static function (string $word): bool {
-            return strlen($word) > 3 && ! in_array($word, ['with', 'from', 'that', 'this', 'have', 'will', 'about', 'into'], true);
-        });
-
-        return array_values(array_unique($parts));
+        usort($results, static fn(array $a, array $b): int => (int) ($b['_score'] ?? 0) <=> (int) ($a['_score'] ?? 0));
+        $results = array_slice($results, 0, 5);
+        return array_map(static function (array $item): array {
+            unset($item['_score']);
+            return $item;
+        }, $results);
     }
 }

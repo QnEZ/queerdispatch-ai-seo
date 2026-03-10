@@ -10,6 +10,9 @@ if (! defined('ABSPATH')) {
 
 require_once QD_AI_SEO_PATH . 'includes/class-settings.php';
 require_once QD_AI_SEO_PATH . 'includes/class-meta.php';
+require_once QD_AI_SEO_PATH . 'includes/class-permissions.php';
+require_once QD_AI_SEO_PATH . 'includes/class-logger.php';
+require_once QD_AI_SEO_PATH . 'includes/class-history.php';
 require_once QD_AI_SEO_PATH . 'includes/class-openai-client.php';
 require_once QD_AI_SEO_PATH . 'includes/class-rest-api.php';
 require_once QD_AI_SEO_PATH . 'includes/class-seo-output.php';
@@ -75,7 +78,7 @@ final class Plugin
 
     public function enqueue_editor_assets(): void
     {
-        if (! current_user_can('edit_posts')) {
+        if (! Permissions::current_user_can_generate()) {
             return;
         }
 
@@ -104,11 +107,15 @@ final class Plugin
                     'socialPosts'          => (bool) Settings::get_option('enable_social_posts', '1'),
                     'infographicPrompt'    => (bool) Settings::get_option('enable_infographic_prompt', '1'),
                     'autoDisclosureInsert' => (bool) Settings::get_option('auto_insert_disclosure_block', '0'),
-                    'imageMetadata'       => (bool) Settings::get_option('enable_image_metadata', '1'),
-                    'storyPackage'        => (bool) Settings::get_option('enable_story_package', '1'),
+                    'imageMetadata'        => (bool) Settings::get_option('enable_image_metadata', '1'),
+                    'storyPackage'         => (bool) Settings::get_option('enable_story_package', '1'),
+                ],
+                'limits'        => [
+                    'tokenCap' => absint((string) Settings::get_option('per_request_token_cap', '12000')),
+                    'dailyGenerationLimit' => absint((string) Settings::get_option('daily_generation_limit', '50')),
                 ],
                 'integrations'  => Integrations::get_active_integrations(),
-                'beatPresets'    => Settings::get_beat_presets(),
+                'beatPresets'   => Settings::get_beat_presets(),
                 'editorialStatuses' => Settings::get_editorial_statuses(),
                 'strings'       => [
                     'title'              => __('QueerDispatch AI SEO', 'queerdispatch-ai-seo'),
